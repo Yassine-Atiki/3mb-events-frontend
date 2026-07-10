@@ -1,0 +1,17 @@
+<div
+  class="relative flex flex-col items-center justify-center gap-3 overflow-hidden rounded-2xl border border-brand-teal/10 bg-gradient-to-b from-surface-muted to-surface-light px-6 py-14 text-center">
+  <div
+    class="pointer-events-none absolute -top-10 left-1/2 h-40 w-40 -translate-x-1/2 rounded-full bg-brand-teal/10 blur-3xl"
+    aria-hidden="true"></div>
+  <div
+    class="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-brand-teal-dark shadow-card ring-1 ring-brand-teal/15">
+    <ng-content select="[icon]"></ng-content>
+  </div>
+  <h3 class="relative text-lg font-semibold text-text-primary">{{ title() }}</h3>
+  @if (description(); as d) {
+  <p class="relative max-w-sm text-sm text-text-secondary">{{ d }}</p>
+  }
+  <div class="relative mt-2">
+    <ng-content select="[cta]"></ng-content>
+  </div>
+</div>

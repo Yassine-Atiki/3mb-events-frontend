@@ -1,0 +1,35 @@
+<div class="flex flex-col gap-6">
+  <ol class="flex items-center">
+    @for (step of steps(); track step.id; let i = $index; let last = $last) {
+      <li class="flex flex-1 items-center" [class.flex-none]="last">
+        <div class="flex flex-col items-center gap-2">
+          <span
+            class="flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold transition-colors duration-200"
+            [class]="circleClasses(i)"
+          >
+            @if (i < currentIndex()) {
+              ✓
+            } @else {
+              {{ i + 1 }}
+            }
+          </span>
+          <span
+            class="max-w-[6rem] text-center text-xs font-medium"
+            [class.text-text-primary]="i <= currentIndex()"
+            [class.text-text-secondary]="i > currentIndex()"
+          >
+            {{ step.label }}
+          </span>
+        </div>
+        @if (!last) {
+          <span class="mx-2 h-0.5 flex-1 rounded-full" [class.bg-brand-teal]="i < currentIndex()" [class.bg-surface-light]="i >= currentIndex()"></span>
+        }
+      </li>
+    }
+  </ol>
+
+  <div class="flex items-center justify-between">
+    <app-ui-button variant="ghost" [disabled]="isFirst()" (clicked)="prev.emit()">Précédent</app-ui-button>
+    <app-ui-button variant="primary" [disabled]="isLast()" (clicked)="next.emit()">Suivant</app-ui-button>
+  </div>
+</div>

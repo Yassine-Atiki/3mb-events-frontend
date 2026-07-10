@@ -1,0 +1,20 @@
+<div class="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center px-4 py-16 text-center">
+  <div class="relative mb-6 grid h-20 w-20 place-items-center rounded-3xl bg-brand-teal/15 text-brand-teal-dark shadow-glow-teal">
+    <lucide-angular [img]="iconRef()" [size]="34" [strokeWidth]="1.75"></lucide-angular>
+  </div>
+
+  <app-ui-badge tone="teal">Bientôt disponible</app-ui-badge>
+
+  <h1 class="mt-4 text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">{{ title() }}</h1>
+  <p class="mt-3 max-w-md text-sm leading-relaxed text-text-secondary sm:text-base">{{ description() }}</p>
+
+  @if (reference(); as ref) {
+    <div class="mt-3 rounded-full bg-surface-light px-3 py-1 text-xs font-medium text-text-secondary">
+      Référence : {{ ref }}
+    </div>
+  }
+
+  <a routerLink="/" class="mt-8">
+    <app-ui-button variant="secondary">Retour à l'accueil</app-ui-button>
+  </a>
+</div>

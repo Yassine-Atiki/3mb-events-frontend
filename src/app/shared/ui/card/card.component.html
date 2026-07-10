@@ -1,0 +1,9 @@
+<div [class]="cardClasses()">
+  @if (title(); as t) {
+  <h3 class="mb-4 flex items-center gap-2 text-lg font-semibold text-text-primary">
+    <span class="h-4 w-1 rounded-full bg-brand-teal"></span>
+    {{ t }}
+  </h3>
+  }
+  <ng-content></ng-content>
+</div>

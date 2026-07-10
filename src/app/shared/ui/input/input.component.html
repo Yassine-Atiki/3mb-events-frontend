@@ -1,0 +1,42 @@
+<div class="flex flex-col gap-1.5">
+  @if (label(); as l) {
+    <label [for]="inputId" class="text-sm font-medium text-text-primary">{{ l }}</label>
+  }
+  <div class="relative">
+    @if (leadingIcon(); as icon) {
+      <lucide-angular
+        [img]="icon"
+        [size]="18"
+        class="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-text-secondary"
+      />
+    }
+    <input
+      [id]="inputId"
+      class="ui-input-native"
+      [type]="resolvedType()"
+      [placeholder]="placeholder()"
+      [value]="value()"
+      [disabled]="disabled()"
+      [class]="inputClasses()"
+      (input)="handleInput($event)"
+      (blur)="handleBlur()"
+    />
+    @if (isPasswordField()) {
+      <button
+        type="button"
+        class="absolute right-2 top-1/2 z-10 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-text-secondary transition-colors hover:bg-surface-muted hover:text-brand-teal-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal/40"
+        (click)="togglePasswordVisibility()"
+        [attr.aria-label]="passwordVisible() ? 'Masquer le mot de passe' : 'Afficher le mot de passe'"
+        [attr.aria-pressed]="passwordVisible()"
+        tabindex="0"
+      >
+        <lucide-angular [img]="passwordVisible() ? icons.EyeOff : icons.Eye" [size]="18" />
+      </button>
+    }
+  </div>
+  @if (error(); as e) {
+    <span class="text-xs text-red-500">{{ e }}</span>
+  } @else if (hint(); as h) {
+    <span class="text-xs text-text-secondary">{{ h }}</span>
+  }
+</div>

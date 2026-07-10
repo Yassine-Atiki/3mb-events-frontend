@@ -1,0 +1,71 @@
+<div class="flex flex-col gap-1.5">
+  @if (label(); as l) {
+    <label [for]="selectId" class="text-sm font-medium text-text-primary">{{ l }}</label>
+  }
+
+  <div class="relative">
+    <button
+      #trigger
+      type="button"
+      [id]="selectId"
+      [class]="triggerClasses()"
+      [disabled]="disabled()"
+      [attr.aria-expanded]="open()"
+      [attr.aria-controls]="listboxId"
+      aria-haspopup="listbox"
+      (click)="toggle()"
+      (keydown)="onTriggerKeydown($event)"
+      (blur)="handleBlur()"
+    >
+      <span
+        class="min-w-0 flex-1 truncate"
+        [class.text-text-primary]="hasSelection()"
+        [class.text-text-secondary]="!hasSelection()"
+      >
+        {{ displayLabel() }}
+      </span>
+      <lucide-angular
+        [img]="icons.ChevronDown"
+        [size]="16"
+        class="shrink-0 text-brand-teal-dark/75 transition-transform duration-200"
+        [class.rotate-180]="open()"
+      />
+    </button>
+
+    @if (open()) {
+      <ul
+        [id]="listboxId"
+        role="listbox"
+        class="ui-select-panel"
+        [ngStyle]="panelStyle()"
+        [attr.aria-activedescendant]="highlightedIndex() >= 0 ? selectId + '-opt-' + highlightedIndex() : null"
+      >
+        @for (entry of menuEntries(); track entry.value + entry.label; let i = $index) {
+          <li
+            [id]="selectId + '-opt-' + i"
+            role="option"
+            class="ui-select-option"
+            [class.ui-select-option--selected]="isSelected(entry.value)"
+            [class.ui-select-option--highlighted]="isHighlighted(i)"
+            [class.ui-select-option--placeholder]="entry.placeholder"
+            [attr.aria-selected]="isSelected(entry.value)"
+            (mousedown)="$event.preventDefault()"
+            (click)="selectOption(entry.value)"
+            (mouseenter)="highlightedIndex.set(i)"
+          >
+            <span class="min-w-0 flex-1 truncate">{{ entry.label }}</span>
+            @if (isSelected(entry.value)) {
+              <lucide-angular [img]="icons.Check" [size]="15" class="shrink-0 text-brand-teal-dark" />
+            }
+          </li>
+        }
+      </ul>
+    }
+  </div>
+
+  @if (error(); as e) {
+    <span class="text-xs text-red-500">{{ e }}</span>
+  } @else if (hint(); as h) {
+    <span class="text-xs text-text-secondary">{{ h }}</span>
+  }
+</div>

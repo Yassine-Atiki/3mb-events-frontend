@@ -1,0 +1,13 @@
+<div class="inline-flex items-center gap-1 rounded-full border border-brand-teal/10 bg-surface-muted p-1" role="tablist">
+  @for (tab of tabs(); track tab.id) {
+    <button
+      type="button"
+      role="tab"
+      [attr.aria-selected]="tab.id === activeId()"
+      [class]="tabClasses(tab.id)"
+      (click)="selectTab(tab.id)"
+    >
+      {{ tab.label }}
+    </button>
+  }
+</div>

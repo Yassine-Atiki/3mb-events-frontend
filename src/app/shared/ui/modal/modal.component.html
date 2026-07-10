@@ -1,0 +1,36 @@
+@if (open()) {
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center p-4"
+    role="presentation"
+    (keydown.escape)="onEscape($event)"
+  >
+    <div class="absolute inset-0 bg-charcoal/60 backdrop-blur-sm" (click)="onBackdropClick()"></div>
+
+    <div
+      #dialog
+      class="relative z-10 w-full max-w-lg rounded-2xl border border-brand-teal/10 bg-surface-white p-6 shadow-2xl focus:outline-none"
+      role="dialog"
+      aria-modal="true"
+      [attr.aria-label]="title()"
+      tabindex="-1"
+    >
+      <div class="mb-4 flex items-center justify-between gap-4">
+        @if (title(); as t) {
+          <h2 class="text-lg font-semibold text-text-primary">{{ t }}</h2>
+        }
+        <button
+          type="button"
+          class="ml-auto rounded-full p-1.5 text-text-secondary transition-colors hover:bg-surface-light hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal"
+          (click)="onBackdropClick()"
+          aria-label="Fermer"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div class="max-h-[70vh] overflow-y-auto">
+        <ng-content></ng-content>
+      </div>
+    </div>
+  </div>
+}

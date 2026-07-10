@@ -1,0 +1,15 @@
+<div class="inline-flex flex-col items-center gap-2 rounded-2xl border border-gray-100 bg-surface-white p-4 shadow-sm">
+  @if (dataUrl(); as url) {
+    <img [src]="url" [width]="size()" [height]="size()" alt="QR code" class="rounded-xl" />
+  } @else if (error()) {
+    <div
+      class="flex items-center justify-center rounded-xl bg-surface-light text-center text-sm text-red-500"
+      [style.width.px]="size()"
+      [style.height.px]="size()"
+    >
+      {{ error() }}
+    </div>
+  } @else {
+    <div class="animate-pulse rounded-xl bg-surface-light" [style.width.px]="size()" [style.height.px]="size()"></div>
+  }
+</div>

@@ -1,0 +1,70 @@
+<div class="app-mesh relative flex min-h-dvh flex-col overflow-hidden lg:flex-row">
+  <div
+    class="auth-panel relative flex shrink-0 flex-col justify-between border-b border-white/10 px-8 py-10 sm:px-12 sm:py-12 lg:w-[42%] lg:border-b-0 lg:border-r lg:px-14 lg:py-14"
+  >
+    <div class="relative z-10">
+      <a routerLink="/" class="auth-panel-brand" aria-label="3MB Events — Accueil">
+        <img src="/logo.png" alt="3MB Events" />
+      </a>
+
+      <div class="mt-14 hidden lg:block">
+        <span class="auth-panel-badge mb-5">
+          <span class="h-1.5 w-1.5 rounded-full bg-brand-teal-light"></span>
+          Plateforme événementielle
+        </span>
+        <h2 class="auth-panel-title">
+          Créez, gérez et vivez des événements mémorables.
+        </h2>
+        <p class="auth-panel-lead">
+          3MB Events accompagne organisateurs et participants avec une billetterie en ligne, des QR codes sécurisés
+          et un contrôle d'accès fluide, du premier clic jusqu'au jour J.
+        </p>
+
+        <div class="auth-panel-features">
+          <div class="auth-panel-feature">
+            <span class="auth-panel-feature-icon auth-panel-feature-icon--teal">
+              <lucide-angular [img]="icons.Ticket" [size]="16"></lucide-angular>
+            </span>
+            <span class="auth-panel-feature-label">Billetterie & QR codes automatiques</span>
+          </div>
+          <div class="auth-panel-feature">
+            <span class="auth-panel-feature-icon auth-panel-feature-icon--indigo">
+              <lucide-angular [img]="icons.ScanLine" [size]="16"></lucide-angular>
+            </span>
+            <span class="auth-panel-feature-label">Contrôle d'accès en temps réel</span>
+          </div>
+          <div class="auth-panel-feature">
+            <span class="auth-panel-feature-icon auth-panel-feature-icon--amber">
+              <lucide-angular [img]="icons.ChartColumn" [size]="16"></lucide-angular>
+            </span>
+            <span class="auth-panel-feature-label">Statistiques & suivi des ventes</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="auth-panel-stats relative z-10 mt-10 hidden lg:flex">
+      <div>
+        <div class="auth-panel-stat-value auth-panel-stat-value--teal">+500</div>
+        <div class="auth-panel-stat-label">Événements organisés</div>
+      </div>
+      <div class="auth-panel-stat-divider" aria-hidden="true"></div>
+      <div>
+        <div class="auth-panel-stat-value auth-panel-stat-value--indigo">+50k</div>
+        <div class="auth-panel-stat-label">Billets délivrés</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="relative flex flex-1 flex-col items-center justify-center px-4 py-10 sm:py-14">
+    <div class="auth-card relative z-10 w-full max-w-md rounded-3xl border border-hairline bg-surface-white p-7 shadow-card sm:p-9">
+      <router-outlet />
+    </div>
+
+    <a routerLink="/" class="relative z-10 mt-8 text-sm font-medium text-text-secondary transition hover:text-brand-teal-dark">
+      ← Retour à l'accueil
+    </a>
+  </div>
+
+  <app-ui-toast-container />
+</div>

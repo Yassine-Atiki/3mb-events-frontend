@@ -1,0 +1,9 @@
+<div class="group relative overflow-hidden rounded-2xl border border-brand-teal/10 bg-surface-white p-6 shadow-card">
+  <span class="absolute inset-x-0 top-0 h-1 bg-gradient-to-r" [class]="toneClasses()"></span>
+  <div class="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br opacity-10 blur-2xl"
+    [class]="toneClasses()" aria-hidden="true"></div>
+  <p class="relative text-sm font-medium text-text-secondary">{{ label() }}</p>
+  <p class="relative mt-2 bg-gradient-to-r bg-clip-text text-3xl font-bold text-transparent" [class]="toneClasses()">
+    {{ displayValue() | number }}{{ suffix() }}
+  </p>
+</div>

@@ -1,0 +1,71 @@
+<div class="flex flex-col gap-4">
+  @if (searchable()) {
+  <div class="flex items-center justify-between gap-4">
+    <input type="search" placeholder="Rechercher..."
+      class="w-full max-w-xs rounded-full border border-gray-200 bg-surface-white px-4 py-2 text-sm text-text-primary placeholder:text-text-secondary/60 focus:outline-none focus:ring-4 focus:ring-brand-teal/15 focus:border-brand-teal sm:w-64"
+      [value]="searchTerm()" (input)="onSearch($any($event.target).value)" />
+  </div>
+  }
+
+  <div class="overflow-x-auto rounded-2xl border border-brand-teal/10 bg-surface-white shadow-card">
+    <table class="min-w-full divide-y divide-gray-100 text-left text-sm">
+      <thead class="bg-surface-muted">
+        <tr>
+          @for (col of columns(); track col.key) {
+          <th scope="col" class="px-4 py-3 font-semibold text-text-secondary select-none"
+            [class.cursor-pointer]="col.sortable" (click)="toggleSort(col)">
+            <span class="inline-flex items-center gap-1">
+              {{ col.header }}
+              @if (col.sortable && sortKey() === col.key) {
+              <span class="text-brand-teal-dark">{{ sortDirection() === 'asc' ? '↑' : '↓' }}</span>
+              }
+            </span>
+          </th>
+          }
+          <th scope="col" class="px-4 py-3"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-50">
+        @for (row of pagedRows(); track $index) {
+        <tr class="transition-colors hover:bg-surface-light/60">
+          @for (col of columns(); track col.key) {
+          <td class="px-4 py-3 text-text-primary">{{ cellValue(row, col) }}</td>
+          }
+          <td class="px-4 py-3 text-right">
+            <div class="flex items-center justify-end gap-1">
+              @for (action of actionsFor(row); track action.action) {
+              <button type="button" class="cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition-colors hover:opacity-80"
+                [class]="actionClasses(action.tone)" (click)="emitAction(action.action, row)">
+                {{ action.label }}
+              </button>
+              }
+            </div>
+          </td>
+        </tr>
+        } @empty {
+        <tr>
+          <td [attr.colspan]="columns().length + 1" class="px-4 py-10 text-center text-text-secondary">
+            {{ emptyMessage() }}
+          </td>
+        </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  @if (totalPages() > 1) {
+  <div class="flex items-center justify-between text-sm text-text-secondary">
+    <span>Page {{ currentPage() }} / {{ totalPages() }}</span>
+    <div class="flex gap-2">
+      <button type="button" class="cursor-pointer rounded-full border border-gray-200 px-3 py-1 transition-colors hover:border-brand-teal/40 hover:bg-surface-light disabled:cursor-not-allowed disabled:opacity-40"
+        [disabled]="currentPage() === 1" (click)="goToPage(currentPage() - 1)">
+        Précédent
+      </button>
+      <button type="button" class="cursor-pointer rounded-full border border-gray-200 px-3 py-1 transition-colors hover:border-brand-teal/40 hover:bg-surface-light disabled:cursor-not-allowed disabled:opacity-40"
+        [disabled]="currentPage() === totalPages()" (click)="goToPage(currentPage() + 1)">
+        Suivant
+      </button>
+    </div>
+  </div>
+  }
+</div>
