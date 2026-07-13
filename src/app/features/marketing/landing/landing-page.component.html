@@ -4,17 +4,17 @@
     class="fixed inset-x-0 top-0 z-50 border-b border-black/5 bg-white/95 backdrop-blur-sm transition-shadow duration-300"
     [class.shadow-sm]="scrolled()"
   >
-    <nav class="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
+    <nav class="flex h-20 w-full items-center gap-4 pl-3 pr-5 sm:pl-4 sm:pr-8 lg:pl-6 lg:pr-12 xl:pl-8 xl:pr-16">
       <button
         type="button"
         (click)="scrollToTop()"
-        class="flex shrink-0 items-center focus-visible:outline-none"
+        class="-ml-1 flex shrink-0 items-center focus-visible:outline-none lg:-ml-2"
         aria-label="3MB Events — Accueil"
       >
         <img src="/logo.png" alt="3MB Events" class="h-11 w-auto object-contain sm:h-12" />
       </button>
 
-      <div class="hidden items-center gap-8 lg:flex">
+      <div class="hidden flex-1 items-center justify-center gap-8 lg:flex">
         <button type="button" class="nav-link text-sm font-semibold text-[#1A1F1C]/75 transition hover:text-[#1A1F1C]" (click)="scrollTo('fonctionnalites')">
           Fonctionnalités
         </button>
@@ -29,7 +29,15 @@
         </button>
       </div>
 
-      <div class="hidden items-center gap-3 sm:flex">
+      <div class="ml-auto flex shrink-0 items-center gap-3">
+        <div class="hidden items-center gap-3 sm:flex">
+        <a
+          routerLink="/auth/connexion"
+          (click)="closeMenu()"
+          class="inline-flex items-center gap-2 rounded-full border border-[#1A1F1C]/12 bg-white px-5 py-2.5 text-sm font-semibold text-[#1A1F1C]/80 transition hover:border-[#53B29A]/35 hover:bg-[#F9FAFB] hover:text-[#2B8A72]"
+        >
+          Se connecter
+        </a>
         <a
           routerLink="/auth/inscription/participant"
           (click)="closeMenu()"
@@ -44,7 +52,7 @@
         >
           Organiser un événement
         </a>
-      </div>
+        </div>
 
       <button
         type="button"
@@ -63,6 +71,7 @@
           </svg>
         }
       </button>
+      </div>
     </nav>
 
     <div class="mobile-panel border-t border-black/5 bg-white px-4 sm:px-6 lg:hidden" [class.is-open]="menuOpen()">
@@ -79,6 +88,13 @@
         <button type="button" class="rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#1A1F1C] hover:bg-[#F9FAFB]" (click)="scrollTo('contact')">
           Contact
         </button>
+        <a
+          routerLink="/auth/connexion"
+          (click)="closeMenu()"
+          class="mt-2 inline-flex items-center justify-center rounded-full border border-[#1A1F1C]/12 bg-white px-5 py-2.5 text-sm font-semibold text-[#1A1F1C]/80"
+        >
+          Se connecter
+        </a>
         <a
           routerLink="/auth/inscription/participant"
           (click)="closeMenu()"
@@ -99,7 +115,7 @@
 
   <!-- Hero centré (maquette) -->
   <section
-    class="relative flex min-h-[88dvh] items-center overflow-hidden bg-gradient-to-br from-[#0F2E24] via-[#163A2F] to-[#1E4A3A] pt-16 pb-16 sm:pt-18"
+    class="relative flex min-h-[88dvh] items-center overflow-hidden bg-gradient-to-br from-[#0F2E24] via-[#163A2F] to-[#1E4A3A] pt-24 pb-16 sm:pt-32"
     [class.hero-ready]="heroReady()"
   >
     <div class="orb orb-a" aria-hidden="true"></div>
@@ -107,7 +123,7 @@
     <div class="orb orb-c" aria-hidden="true"></div>
     <div class="hero-grid" aria-hidden="true"></div>
 
-    <div class="relative z-10 mx-auto w-full max-w-4xl px-4 text-center sm:px-6">
+    <div class="relative z-10 mx-auto w-full max-w-4xl px-4 pt-6 text-center sm:px-6 sm:pt-10">
       <div
         class="hero-item inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-4 py-2 text-[11px] font-semibold tracking-[0.18em] text-[#7BDAC2] backdrop-blur-sm"
         style="--d: 80ms"

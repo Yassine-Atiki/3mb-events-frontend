@@ -69,7 +69,9 @@ import { passwordsMatchValidator } from '../../shared/utils/validators';
         J'accepte les conditions d'utilisation et la politique de confidentialité.
       </label>
 
-      <app-ui-button type="submit" [loading]="loading()" class="mt-2">Créer mon compte organisateur</app-ui-button>
+      <div class="mt-2 flex justify-center">
+        <app-ui-button type="submit" [loading]="loading()">Créer mon compte organisateur</app-ui-button>
+      </div>
     </form>
 
     <p class="mt-6 text-center text-sm text-text-secondary">

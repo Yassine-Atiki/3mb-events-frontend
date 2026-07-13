@@ -345,8 +345,12 @@ function handleUpdateProfile(ctx: RouteContext): User {
   if (!user) {
     throw new MockApiError(404, 'Utilisateur introuvable.');
   }
-  Object.assign(user, ctx.body as UpdateProfileRequest);
-  return user;
+  const payload = ctx.body as UpdateProfileRequest;
+  Object.assign(user, payload);
+  if (payload.avatarUrl === '') {
+    delete user.avatarUrl;
+  }
+  return { ...user };
 }
 
 function handleUpdateUserStatus(ctx: RouteContext): User {

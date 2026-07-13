@@ -1,8 +1,16 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { LayoutDashboard, LucideAngularModule, Shield, Sparkles, UserRound } from 'lucide-angular';
+import {
+  Camera,
+  LayoutDashboard,
+  LucideAngularModule,
+  Shield,
+  Sparkles,
+  Trash2,
+  UserRound
+} from 'lucide-angular';
 
 import { AuthService } from '../../core/api/auth.service';
 import { UserService } from '../../core/api/user.service';
@@ -14,9 +22,21 @@ import { InputComponent } from '../../shared/ui/input/input.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { passwordsMatchValidator } from '../../shared/utils/validators';
 
+const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+
 function extractErrorMessage(error: HttpErrorResponse, fallback: string): string {
   const message = (error.error as { message?: string } | null)?.message;
   return message ?? fallback;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('Lecture du fichier impossible.'));
+    reader.readAsDataURL(file);
+  });
 }
 
 @Component({
@@ -42,10 +62,10 @@ function extractErrorMessage(error: HttpErrorResponse, fallback: string): string
           </div>
           <h1 class="text-3xl font-bold tracking-tight text-text-primary sm:text-4xl">Mon profil</h1>
           <p class="mt-1 max-w-2xl text-base text-text-secondary">
-            Vos informations personnelles et la sécurité de votre compte, au même endroit.
+            Photo, informations personnelles et sécurité de votre compte, au même endroit.
           </p>
         </div>
-        <a routerLink="/app" class="participant-quick-nav-chip">
+        <a [routerLink]="dashboardLink()" class="participant-quick-nav-chip">
           <lucide-angular [img]="icons.LayoutDashboard" [size]="14"></lucide-angular>
           Tableau de bord
         </a>
@@ -54,14 +74,47 @@ function extractErrorMessage(error: HttpErrorResponse, fallback: string): string
       <section class="participant-profile-hero" aria-label="Identité du compte">
         <div class="participant-profile-hero-scrim" aria-hidden="true"></div>
         <div class="participant-profile-hero-content">
-          <div class="participant-profile-avatar-ring">
-            <app-ui-avatar [name]="displayName()" size="lg" />
+          <div class="participant-profile-avatar-block">
+            <div class="participant-profile-avatar-ring">
+              <app-ui-avatar [name]="displayName()" [url]="user()?.avatarUrl" size="lg" />
+            </div>
+
+            <div class="participant-profile-avatar-actions">
+              <input
+                #avatarInput
+                type="file"
+                class="sr-only"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                (change)="onAvatarSelected($event)"
+              />
+              <button
+                type="button"
+                class="participant-profile-avatar-btn"
+                [disabled]="uploadingAvatar()"
+                (click)="openAvatarPicker()"
+              >
+                <lucide-angular [img]="icons.Camera" [size]="14"></lucide-angular>
+                {{ uploadingAvatar() ? 'Envoi…' : user()?.avatarUrl ? 'Changer la photo' : 'Ajouter une photo' }}
+              </button>
+              @if (user()?.avatarUrl) {
+                <button
+                  type="button"
+                  class="participant-profile-avatar-btn participant-profile-avatar-btn--ghost"
+                  [disabled]="uploadingAvatar()"
+                  (click)="removeAvatar()"
+                >
+                  <lucide-angular [img]="icons.Trash2" [size]="14"></lucide-angular>
+                  Retirer
+                </button>
+              }
+            </div>
+            <p class="participant-profile-avatar-hint">JPG, PNG ou WebP — 2 Mo max.</p>
           </div>
 
           <div>
             <h2 class="participant-profile-identity-name">{{ displayName() }}</h2>
             <p class="participant-profile-identity-email">{{ user()?.email }}</p>
-            <app-ui-badge class="mt-2.5 inline-block" tone="teal">Participant</app-ui-badge>
+            <app-ui-badge class="mt-2.5 inline-block" tone="teal">{{ roleLabel() }}</app-ui-badge>
           </div>
 
           <div class="participant-profile-hero-chips">
@@ -140,16 +193,41 @@ export class ProfilePage {
   private readonly authStore = inject(AuthStore);
   private readonly toast = inject(ToastService);
 
-  protected readonly icons = { Sparkles, LayoutDashboard, UserRound, Shield };
+  private readonly avatarInput = viewChild<ElementRef<HTMLInputElement>>('avatarInput');
+
+  protected readonly icons = { Sparkles, LayoutDashboard, UserRound, Shield, Camera, Trash2 };
 
   protected readonly user = this.authStore.user;
   protected readonly savingProfile = signal(false);
   protected readonly savingPassword = signal(false);
+  protected readonly uploadingAvatar = signal(false);
 
   protected readonly displayName = computed(() => {
     const user = this.user();
     if (!user) return '';
     return `${user.firstName} ${user.lastName}`.trim();
+  });
+
+  protected readonly roleLabel = computed(() => {
+    switch (this.user()?.role) {
+      case 'ORGANIZER':
+        return 'Organisateur';
+      case 'ADMIN':
+        return 'Administrateur';
+      default:
+        return 'Participant';
+    }
+  });
+
+  protected readonly dashboardLink = computed(() => {
+    switch (this.user()?.role) {
+      case 'ORGANIZER':
+        return '/organisateur/tableau-de-bord';
+      case 'ADMIN':
+        return '/admin/tableau-de-bord';
+      default:
+        return '/app/tableau-de-bord';
+    }
   });
 
   protected readonly profileForm = this.fb.nonNullable.group({
@@ -190,6 +268,66 @@ export class ProfilePage {
   protected passwordInvalid(name: keyof typeof this.passwordForm.controls): boolean {
     const control = this.passwordForm.controls[name];
     return control.invalid && control.touched;
+  }
+
+  protected openAvatarPicker(): void {
+    this.avatarInput()?.nativeElement.click();
+  }
+
+  protected async onAvatarSelected(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+
+    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+      this.toast.error('Format non supporté. Utilisez JPG, PNG, WebP ou GIF.');
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      this.toast.error('La photo doit faire 2 Mo maximum.');
+      return;
+    }
+
+    const userId = this.user()?.id;
+    if (!userId) return;
+
+    this.uploadingAvatar.set(true);
+    try {
+      const avatarUrl = await readFileAsDataUrl(file);
+      this.userService.updateProfile(userId, { avatarUrl }).subscribe({
+        next: (user) => {
+          this.authStore.setUser(user);
+          this.uploadingAvatar.set(false);
+          this.toast.success('Photo de profil mise à jour.');
+        },
+        error: (error: HttpErrorResponse) => {
+          this.uploadingAvatar.set(false);
+          this.toast.error(extractErrorMessage(error, 'Impossible de mettre à jour la photo.'));
+        }
+      });
+    } catch {
+      this.uploadingAvatar.set(false);
+      this.toast.error('Impossible de lire cette image.');
+    }
+  }
+
+  protected removeAvatar(): void {
+    const userId = this.user()?.id;
+    if (!userId) return;
+
+    this.uploadingAvatar.set(true);
+    this.userService.updateProfile(userId, { avatarUrl: '' }).subscribe({
+      next: (user) => {
+        this.authStore.setUser({ ...user, avatarUrl: undefined });
+        this.uploadingAvatar.set(false);
+        this.toast.success('Photo de profil retirée.');
+      },
+      error: (error: HttpErrorResponse) => {
+        this.uploadingAvatar.set(false);
+        this.toast.error(extractErrorMessage(error, 'Impossible de retirer la photo.'));
+      }
+    });
   }
 
   protected submitProfile(): void {

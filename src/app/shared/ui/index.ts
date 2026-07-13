@@ -23,6 +23,10 @@ export type { SelectOption } from './select/select.component';
 
 export { ModalComponent } from './modal/modal.component';
 
+export { ConfirmDialogComponent } from './confirm-dialog/confirm-dialog.component';
+export { ConfirmDialogService } from './confirm-dialog/confirm-dialog.service';
+export type { ConfirmDialogOptions, ConfirmDialogTone } from './confirm-dialog/confirm-dialog.service';
+
 export { TabsComponent } from './tabs/tabs.component';
 export type { TabItem } from './tabs/tabs.component';
 

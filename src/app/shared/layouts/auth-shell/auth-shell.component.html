@@ -56,7 +56,17 @@
     </div>
   </div>
 
-  <div class="relative flex flex-1 flex-col items-center justify-center px-4 py-10 sm:py-14">
+  @if (splashCursorEnabled()) {
+    <app-splash-cursor class="auth-right-panel">
+      <ng-container *ngTemplateOutlet="authRightPanel" />
+    </app-splash-cursor>
+  } @else {
+    <div class="auth-right-panel relative flex flex-1 flex-col items-center justify-center px-4 py-10 sm:py-14">
+      <ng-container *ngTemplateOutlet="authRightPanel" />
+    </div>
+  }
+
+  <ng-template #authRightPanel>
     <div class="auth-card relative z-10 w-full max-w-md rounded-3xl border border-hairline bg-surface-white p-7 shadow-card sm:p-9">
       <router-outlet />
     </div>
@@ -64,7 +74,7 @@
     <a routerLink="/" class="relative z-10 mt-8 text-sm font-medium text-text-secondary transition hover:text-brand-teal-dark">
       ← Retour à l'accueil
     </a>
-  </div>
+  </ng-template>
 
   <app-ui-toast-container />
 </div>

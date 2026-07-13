@@ -12,6 +12,7 @@ import { InputComponent } from '../../shared/ui/input/input.component';
 import { ModalComponent } from '../../shared/ui/modal/modal.component';
 import { SkeletonComponent } from '../../shared/ui/skeleton/skeleton.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dialog.service';
 
 interface CategoryForm {
   name: string;
@@ -281,6 +282,7 @@ const EMPTY_FORM: CategoryForm = { name: '', slug: '', icon: '', description: ''
 export class AdminCategoriesPage {
   private readonly categoryService = inject(CategoryService);
   private readonly toast = inject(ToastService);
+  private readonly confirmDialog = inject(ConfirmDialogService);
 
   protected readonly icons = { FolderTree, Tag, Plus, Search };
   protected readonly accentFor = categoryColor;
@@ -409,8 +411,15 @@ export class AdminCategoriesPage {
     });
   }
 
-  protected delete(category: Category): void {
-    if (!confirm(`Supprimer la catégorie "${category.name}" ?`)) return;
+  protected async delete(category: Category): Promise<void> {
+    const confirmed = await this.confirmDialog.confirm({
+      title: 'Supprimer cette catégorie ?',
+      message: `« ${category.name} » sera définitivement retirée. Cette action est irréversible.`,
+      confirmLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      tone: 'danger'
+    });
+    if (!confirmed) return;
     this.deleting.set(true);
     this.categoryService.delete(category.id).subscribe({
       next: () => {

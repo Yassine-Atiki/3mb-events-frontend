@@ -294,6 +294,24 @@
   background: color-mix(in srgb, white 14%, transparent);
 }
 
+app-splash-cursor.auth-right-panel {
+  position: relative;
+  flex: 1 1 0%;
+  min-height: 0;
+  min-width: 0;
+}
+
+app-splash-cursor.auth-right-panel .splash-cursor-content {
+  padding: 2.5rem 1rem;
+}
+
+@media (min-width: 640px) {
+  app-splash-cursor.auth-right-panel .splash-cursor-content {
+    padding-top: 3.5rem;
+    padding-bottom: 3.5rem;
+  }
+}
+
 /* ========== App shell — Luminous Glass ========== */
 
 .shell-rail-desktop {
@@ -3026,6 +3044,62 @@ app-ticket-card {
   font-size: 1.35rem !important;
 }
 
+.participant-profile-avatar-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.participant-profile-avatar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.participant-profile-avatar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, white 22%, transparent);
+  background: color-mix(in srgb, white 14%, transparent);
+  padding: 0.4rem 0.8rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: white;
+  backdrop-filter: blur(8px);
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.participant-profile-avatar-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, white 22%, transparent);
+  border-color: color-mix(in srgb, white 40%, transparent);
+}
+
+.participant-profile-avatar-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.participant-profile-avatar-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.participant-profile-avatar-btn--ghost {
+  background: transparent;
+  color: color-mix(in srgb, white 78%, transparent);
+}
+
+.participant-profile-avatar-hint {
+  margin: 0;
+  font-size: 0.68rem;
+  color: color-mix(in srgb, white 55%, transparent);
+}
+
 .participant-profile-identity-name {
   font-size: 1.45rem;
   font-weight: 700;
@@ -3911,10 +3985,38 @@ app-ticket-card {
 }
 
 .admin-status-spectrum-card {
+  min-width: 0;
+  overflow: hidden;
   border-radius: 0.85rem;
   border: 1px solid var(--color-hairline);
   background: color-mix(in srgb, var(--color-surface-light) 55%, white);
   padding: 0.8rem 0.9rem;
+}
+
+.admin-status-spectrum-card-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.admin-status-spectrum-swatch {
+  flex-shrink: 0;
+  width: 0.35rem;
+  height: 1.1rem;
+  margin-top: 0.1rem;
+  border-radius: 9999px;
+}
+
+.admin-status-spectrum-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .admin-status-spectrum-card--live {
@@ -4046,6 +4148,141 @@ app-ticket-card {
 
 .ui-modal-footer app-ui-button button {
   width: 100%;
+}
+
+/* ========== Confirm dialog — SaaS premium ========== */
+
+.confirm-dialog-root {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.confirm-dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, #0b1119 55%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: confirm-dialog-fade 0.2s ease;
+}
+
+.confirm-dialog-panel {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 26rem;
+  border-radius: 1.35rem;
+  border: 1px solid color-mix(in srgb, white 70%, var(--color-hairline));
+  background:
+    linear-gradient(165deg, color-mix(in srgb, white 96%, transparent), color-mix(in srgb, white 88%, transparent)),
+    white;
+  padding: 1.6rem 1.5rem 1.35rem;
+  box-shadow:
+    0 28px 64px color-mix(in srgb, #0b1119 22%, transparent),
+    0 0 0 1px color-mix(in srgb, white 65%, transparent) inset;
+  animation: confirm-dialog-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.confirm-dialog-icon {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: 1rem;
+  border-radius: 0.95rem;
+  border: 1px solid transparent;
+}
+
+.confirm-dialog-icon--danger {
+  color: #e11d48;
+  border-color: color-mix(in srgb, #e11d48 18%, transparent);
+  background: color-mix(in srgb, #e11d48 10%, white);
+}
+
+.confirm-dialog-icon--warning {
+  color: #d97706;
+  border-color: color-mix(in srgb, #f59e0b 22%, transparent);
+  background: color-mix(in srgb, #f59e0b 12%, white);
+}
+
+.confirm-dialog-icon--neutral {
+  color: var(--color-brand-teal-dark);
+  border-color: color-mix(in srgb, var(--color-brand-teal) 22%, transparent);
+  background: color-mix(in srgb, var(--color-brand-teal) 10%, white);
+}
+
+.confirm-dialog-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+  color: var(--color-text-primary);
+}
+
+.confirm-dialog-message {
+  margin: 0.55rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1.45rem;
+}
+
+.confirm-dialog-actions app-ui-button {
+  min-width: 7.5rem;
+}
+
+.confirm-dialog-actions app-ui-button button.confirm-dialog-btn-danger,
+button.confirm-dialog-btn-danger {
+  border-color: #e11d48 !important;
+  background: #e11d48 !important;
+  color: white !important;
+  box-shadow: 0 10px 24px color-mix(in srgb, #e11d48 22%, transparent);
+}
+
+.confirm-dialog-actions app-ui-button button.confirm-dialog-btn-danger:hover,
+button.confirm-dialog-btn-danger:hover {
+  border-color: #be123c !important;
+  background: #be123c !important;
+}
+
+@keyframes confirm-dialog-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes confirm-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confirm-dialog-backdrop,
+  .confirm-dialog-panel {
+    animation: none;
+  }
 }
 
 .admin-modal-hero {

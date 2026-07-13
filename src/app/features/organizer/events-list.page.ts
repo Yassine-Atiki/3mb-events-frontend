@@ -34,6 +34,7 @@ import { InputComponent } from '../../shared/ui/input/input.component';
 import { SelectComponent, SelectOption } from '../../shared/ui/select/select.component';
 import { SkeletonComponent } from '../../shared/ui/skeleton/skeleton.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dialog.service';
 
 const STATUS_OPTIONS: SelectOption[] = [
   { value: 'all', label: 'Tous les statuts' },
@@ -452,6 +453,7 @@ export class OrganizerEventsListPage {
   private readonly occupancyService = inject(OccupancyService);
   private readonly authStore = inject(AuthStore);
   private readonly toast = inject(ToastService);
+  private readonly confirmDialog = inject(ConfirmDialogService);
 
   protected readonly icons = {
     Plus,
@@ -564,13 +566,17 @@ export class OrganizerEventsListPage {
     });
   }
 
-  protected deleteEvent(event: Event, clickEvent?: MouseEvent): void {
+  protected async deleteEvent(event: Event, clickEvent?: MouseEvent): Promise<void> {
     clickEvent?.preventDefault();
     clickEvent?.stopPropagation();
 
-    const confirmed =
-      typeof window === 'undefined' ||
-      window.confirm(`Supprimer définitivement « ${event.title} » ? Cette action est irréversible.`);
+    const confirmed = await this.confirmDialog.confirm({
+      title: 'Supprimer cet événement ?',
+      message: `« ${event.title} » sera définitivement supprimé. Cette action est irréversible.`,
+      confirmLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      tone: 'danger'
+    });
 
     if (!confirmed) return;
 

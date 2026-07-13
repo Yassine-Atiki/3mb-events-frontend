@@ -14,6 +14,7 @@ import { InputComponent } from '../../shared/ui/input/input.component';
 import { SelectComponent, SelectOption } from '../../shared/ui/select/select.component';
 import { SkeletonComponent } from '../../shared/ui/skeleton/skeleton.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dialog.service';
 
 const KIND_OPTIONS: SelectOption[] = [
   { value: 'STANDARD', label: 'Standard' },
@@ -163,6 +164,7 @@ export class EventTicketsPage {
   private readonly eventService = inject(EventService);
   private readonly ticketService = inject(TicketService);
   private readonly toast = inject(ToastService);
+  private readonly confirmDialog = inject(ConfirmDialogService);
 
   protected readonly icons = { ArrowLeft, Plus, Trash2 };
   protected readonly kindOptions = KIND_OPTIONS;
@@ -228,8 +230,14 @@ export class EventTicketsPage {
     this.creating.set(false);
   }
 
-  protected deleteTicketType(ticket: TicketType): void {
-    const confirmed = typeof window === 'undefined' || window.confirm(`Supprimer "${ticket.name}" ?`);
+  protected async deleteTicketType(ticket: TicketType): Promise<void> {
+    const confirmed = await this.confirmDialog.confirm({
+      title: 'Supprimer ce type de billet ?',
+      message: `« ${ticket.name} » sera retiré de cet événement. Cette action est irréversible.`,
+      confirmLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      tone: 'danger'
+    });
     if (!confirmed) return;
 
     this.ticketService.deleteTicketType(ticket.id).subscribe({

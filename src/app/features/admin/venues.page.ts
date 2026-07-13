@@ -11,6 +11,7 @@ import { InputComponent } from '../../shared/ui/input/input.component';
 import { ModalComponent } from '../../shared/ui/modal/modal.component';
 import { SkeletonComponent } from '../../shared/ui/skeleton/skeleton.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dialog.service';
 
 interface VenueForm {
   name: string;
@@ -302,6 +303,7 @@ const EMPTY_FORM: VenueForm = {
 export class AdminVenuesPage {
   private readonly venueService = inject(VenueService);
   private readonly toast = inject(ToastService);
+  private readonly confirmDialog = inject(ConfirmDialogService);
 
   protected readonly icons = { Building2, MapPin, Plus, Search, Users };
 
@@ -431,8 +433,15 @@ export class AdminVenuesPage {
     });
   }
 
-  protected delete(venue: Venue): void {
-    if (!confirm(`Supprimer le lieu "${venue.name}" ?`)) return;
+  protected async delete(venue: Venue): Promise<void> {
+    const confirmed = await this.confirmDialog.confirm({
+      title: 'Supprimer ce lieu ?',
+      message: `« ${venue.name} » sera définitivement retiré. Cette action est irréversible.`,
+      confirmLabel: 'Supprimer',
+      cancelLabel: 'Annuler',
+      tone: 'danger'
+    });
+    if (!confirmed) return;
     this.deleting.set(true);
     this.venueService.delete(venue.id).subscribe({
       next: () => {

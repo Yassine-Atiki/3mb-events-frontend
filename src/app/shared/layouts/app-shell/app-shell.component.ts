@@ -26,6 +26,8 @@ import {
 import { AuthStore } from '../../../core/auth/auth.store';
 import { NotificationStore } from '../../../core/auth/notification.store';
 import { AvatarComponent } from '../../ui/avatar/avatar.component';
+import { ConfirmDialogComponent } from '../../ui/confirm-dialog/confirm-dialog.component';
+import { ConfirmDialogService } from '../../ui/confirm-dialog/confirm-dialog.service';
 import { ToastContainerComponent } from '../../ui/toast/toast-container.component';
 import { IconRailComponent, ICON_RAIL_COLLAPSED_W, ICON_RAIL_EXPANDED_W, NavItem } from '../icon-rail/icon-rail.component';
 
@@ -44,6 +46,7 @@ const ROLE_HOME: Record<string, string> = {
     LucideAngularModule,
     AvatarComponent,
     ToastContainerComponent,
+    ConfirmDialogComponent,
     IconRailComponent
   ],
   templateUrl: './app-shell.component.html',
@@ -65,6 +68,7 @@ export class AppShellComponent {
   protected readonly notificationStore = inject(NotificationStore);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly confirmDialog = inject(ConfirmDialogService);
 
   protected readonly notifOpen = signal(false);
   protected readonly userMenuOpen = signal(false);
@@ -91,6 +95,17 @@ export class AppShellComponent {
         return 'Administrateur';
       default:
         return 'Participant';
+    }
+  });
+
+  protected readonly profileLink = computed(() => {
+    switch (this.user()?.role) {
+      case 'ORGANIZER':
+        return '/organisateur/profil';
+      case 'ADMIN':
+        return '/admin/profil';
+      default:
+        return '/app/profil';
     }
   });
 
@@ -170,7 +185,17 @@ export class AppShellComponent {
     this.notifOpen.set(false);
   }
 
-  protected logout(): void {
+  protected async logout(): Promise<void> {
+    this.userMenuOpen.set(false);
+    const confirmed = await this.confirmDialog.confirm({
+      title: 'Se déconnecter ?',
+      message: 'Vous allez quitter votre espace 3MB Events. Vous pourrez vous reconnecter à tout moment.',
+      confirmLabel: 'Se déconnecter',
+      cancelLabel: 'Rester connecté',
+      tone: 'neutral'
+    });
+    if (!confirmed) return;
+
     this.authStore.logout();
     this.router.navigate(['/']);
   }

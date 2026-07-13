@@ -32,9 +32,9 @@ const STATUS_COLORS: Record<string, string> = {
       <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         @for (segment of segments(); track segment.label) {
           <div class="admin-status-spectrum-card" [class.admin-status-spectrum-card--live]="segment.label === 'PUBLIE'">
-            <div class="flex items-center gap-2">
-              <span class="h-2 w-2 rounded-full" [style.background]="segment.color"></span>
-              <span class="text-xs font-medium text-text-secondary">{{ segment.displayLabel }}</span>
+            <div class="admin-status-spectrum-card-row">
+              <span class="admin-status-spectrum-swatch" [style.background]="segment.color" aria-hidden="true"></span>
+              <span class="admin-status-spectrum-label">{{ segment.displayLabel }}</span>
             </div>
             <div class="mt-2 flex items-baseline gap-2">
               <span class="font-mono text-xl font-semibold tabular-nums text-text-primary">{{ segment.value }}</span>

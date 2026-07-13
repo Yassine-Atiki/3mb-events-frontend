@@ -145,6 +145,10 @@ export const routes: Routes = [
       {
         path: 'remboursements',
         loadComponent: () => import('./features/organizer/refunds.page').then((m) => m.OrganizerRefundsPage)
+      },
+      {
+        path: 'profil',
+        loadComponent: () => import('./features/participant/profile.page').then((m) => m.ProfilePage)
       }
     ]
   },
@@ -185,6 +189,10 @@ export const routes: Routes = [
       {
         path: 'rapports',
         loadComponent: () => import('./features/admin/reports.page').then((m) => m.AdminReportsPage)
+      },
+      {
+        path: 'profil',
+        loadComponent: () => import('./features/participant/profile.page').then((m) => m.ProfilePage)
       }
     ]
   },
