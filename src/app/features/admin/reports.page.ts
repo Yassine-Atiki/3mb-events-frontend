@@ -1,3 +1,4 @@
+import { HttpResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
@@ -10,9 +11,9 @@ import {
   ScrollText,
   Users
 } from 'lucide-angular';
-import { catchError, forkJoin, Observable, of } from 'rxjs';
+import { catchError, forkJoin, of } from 'rxjs';
 
-import { AdminService } from '../../core/api/admin.service';
+import { AdminReportFormat, AdminReportType, AdminService } from '../../core/api/admin.service';
 import { EventService } from '../../core/api/event.service';
 import { RefundService } from '../../core/api/refund.service';
 import { StatsService } from '../../core/api/stats.service';
@@ -25,8 +26,6 @@ import { SelectComponent, SelectOption } from '../../shared/ui/select/select.com
 import { SkeletonComponent } from '../../shared/ui/skeleton/skeleton.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
-type ExportFormat = 'pdf' | 'excel';
-
 interface ReportCounts {
   users: number;
   events: number;
@@ -35,13 +34,12 @@ interface ReportCounts {
 }
 
 interface ReportDefinition {
-  id: keyof ReportCounts;
+  id: AdminReportType;
   code: string;
   title: string;
   description: string;
   accent: string;
   icon: typeof FileText;
-  fetch: () => Observable<unknown>;
 }
 
 const FORMAT_OPTIONS: SelectOption[] = [
@@ -49,15 +47,53 @@ const FORMAT_OPTIONS: SelectOption[] = [
   { value: 'excel', label: 'Excel (.xlsx)' }
 ];
 
-const FORMAT_LABELS: Record<ExportFormat, string> = {
+const FORMAT_LABELS: Record<AdminReportFormat, string> = {
   pdf: 'PDF',
   excel: 'Excel'
 };
 
-const FORMAT_COLORS: Record<ExportFormat, string> = {
+const FORMAT_COLORS: Record<AdminReportFormat, string> = {
   pdf: '#F43F5E',
   excel: '#22C55E'
 };
+
+const MIME_BY_FORMAT: Record<AdminReportFormat, string> = {
+  pdf: 'application/pdf',
+  excel: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+};
+
+const EXT_BY_FORMAT: Record<AdminReportFormat, string> = {
+  pdf: 'pdf',
+  excel: 'xlsx'
+};
+
+function filenameFromContentDisposition(header: string | null, fallback: string): string {
+  if (!header) {
+    return fallback;
+  }
+  const utfMatch = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (utfMatch?.[1]) {
+    try {
+      return decodeURIComponent(utfMatch[1].trim());
+    } catch {
+      return utfMatch[1].trim();
+    }
+  }
+  const plainMatch = /filename="?([^";]+)"?/i.exec(header);
+  return plainMatch?.[1]?.trim() || fallback;
+}
+
+function triggerBrowserDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = 'noopener';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
 
 @Component({
   selector: 'app-admin-reports-page',
@@ -152,7 +188,7 @@ const FORMAT_COLORS: Record<ExportFormat, string> = {
             <div>
               <p class="admin-bento-eyebrow">Catalogue</p>
               <h2 class="admin-bento-title">Modèles d'export</h2>
-              <p class="admin-bento-subtitle">Choisissez le format puis lancez la génération — livraison par e-mail</p>
+              <p class="admin-bento-subtitle">Choisissez le format puis lancez la génération — téléchargement immédiat</p>
             </div>
 
             <div class="admin-report-grid mt-5">
@@ -190,7 +226,7 @@ const FORMAT_COLORS: Record<ExportFormat, string> = {
                       {{ (formats()[report.id] ?? 'pdf') === 'pdf' ? 'PDF' : 'XLSX' }}
                     </span>
                     <app-ui-button size="sm" [loading]="loadingId() === report.id" (clicked)="launchExport(report)">
-                      Générer
+                      Télécharger
                     </app-ui-button>
                   </div>
                 </article>
@@ -225,7 +261,7 @@ const FORMAT_COLORS: Record<ExportFormat, string> = {
               <h2 class="admin-bento-title">Bonnes pratiques</h2>
               <div class="mt-4 space-y-2">
                 <p class="admin-report-tip">
-                  Les exports volumineux (&gt; 1 000 lignes) sont traités en arrière-plan et envoyés par e-mail.
+                  Le fichier est généré côté serveur puis téléchargé automatiquement dans le navigateur.
                 </p>
                 <p class="admin-report-tip">
                   Le journal d'audit conserve la traçabilité des actions sensibles — exportez-le mensuellement.
@@ -269,8 +305,7 @@ export class AdminReportsPage {
       title: 'Utilisateurs',
       description: "Liste complète des utilisateurs avec rôle, statut et date d'inscription.",
       accent: '#6366F1',
-      icon: Users,
-      fetch: () => this.userService.search({ page: 0, size: 1 })
+      icon: Users
     },
     {
       id: 'events',
@@ -278,8 +313,7 @@ export class AdminReportsPage {
       title: 'Événements',
       description: 'Tous les événements, tous statuts, avec organisateurs et lieux associés.',
       accent: '#53B29A',
-      icon: CalendarDays,
-      fetch: () => this.eventService.search({ page: 0, size: 1 })
+      icon: CalendarDays
     },
     {
       id: 'refunds',
@@ -287,8 +321,7 @@ export class AdminReportsPage {
       title: 'Remboursements',
       description: 'Historique des demandes de remboursement et leur traitement administratif.',
       accent: '#F59E0B',
-      icon: Banknote,
-      fetch: () => this.refundService.search({ page: 0, size: 1 })
+      icon: Banknote
     },
     {
       id: 'audit',
@@ -296,15 +329,14 @@ export class AdminReportsPage {
       title: "Journal d'audit",
       description: 'Historique complet des actions administratives sur la plateforme.',
       accent: '#3B82F6',
-      icon: ScrollText,
-      fetch: () => this.adminService.getAuditLogs({ page: 0, size: 1 })
+      icon: ScrollText
     }
   ];
 
   protected readonly loading = signal(true);
   protected readonly counts = signal<ReportCounts>({ users: 0, events: 0, refunds: 0, audit: 0 });
   protected readonly stats = signal<AdminStats | null>(null);
-  protected readonly formats = signal<Record<string, ExportFormat | undefined>>({});
+  protected readonly formats = signal<Record<string, AdminReportFormat | undefined>>({});
   protected readonly loadingId = signal<string | null>(null);
   protected readonly sessionExports = signal(0);
 
@@ -341,11 +373,11 @@ export class AdminReportsPage {
     this.loadOverview();
   }
 
-  protected recordCount(id: keyof ReportCounts): number {
+  protected recordCount(id: AdminReportType): number {
     return this.counts()[id];
   }
 
-  protected setFormat(reportId: string, format: ExportFormat): void {
+  protected setFormat(reportId: string, format: AdminReportFormat): void {
     this.formats.update((current) => ({ ...current, [reportId]: format }));
   }
 
@@ -353,21 +385,48 @@ export class AdminReportsPage {
     this.loadingId.set(report.id);
     const format = this.formats()[report.id] ?? 'pdf';
 
-    report.fetch().subscribe({
-      next: () => {
+    this.adminService.exportReport(report.id, format).subscribe({
+      next: (response) => {
         this.loadingId.set(null);
+        this.saveExportResponse(response, report, format);
         this.sessionExports.update((count) => count + 1);
-        this.toast.success(`Document généré : ${report.title} (${format.toUpperCase()}). Vous le recevrez par e-mail.`);
+        this.toast.success(`Téléchargement démarré : ${report.title} (${format.toUpperCase()}).`);
       },
       error: () => {
         this.loadingId.set(null);
-        this.toast.error(`Impossible de générer le rapport "${report.title}".`);
+        this.toast.error(
+          `Impossible de télécharger le rapport "${report.title}". Vérifiez que l'API d'export est disponible.`
+        );
       }
     });
   }
 
   protected formatRevenue(amount: number): string {
     return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(amount);
+  }
+
+  private saveExportResponse(
+    response: HttpResponse<Blob>,
+    report: ReportDefinition,
+    format: AdminReportFormat
+  ): void {
+    const body = response.body;
+    if (!body) {
+      this.toast.error(`Réponse vide pour le rapport "${report.title}".`);
+      return;
+    }
+
+    const fallbackName = `3mb-${report.id}-${new Date().toISOString().slice(0, 10)}.${EXT_BY_FORMAT[format]}`;
+    const filename = filenameFromContentDisposition(
+      response.headers.get('Content-Disposition'),
+      fallbackName
+    );
+    const typedBlob =
+      body.type && body.type !== 'application/octet-stream'
+        ? body
+        : new Blob([body], { type: MIME_BY_FORMAT[format] });
+
+    triggerBrowserDownload(typedBlob, filename);
   }
 
   private loadOverview(): void {

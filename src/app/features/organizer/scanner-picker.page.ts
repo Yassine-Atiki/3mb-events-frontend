@@ -6,6 +6,7 @@ import { EventService } from '../../core/api/event.service';
 import { AuthStore } from '../../core/auth/auth.store';
 import { Event } from '../../core/models';
 import { EmptyStateComponent } from '../../shared/ui/empty-state/empty-state.component';
+import { PageBackLinkComponent } from '../../shared/ui/page-back/page-back.component';
 import { SkeletonComponent } from '../../shared/ui/skeleton/skeleton.component';
 
 const SCANNABLE_STATUSES = new Set(['PUBLIE', 'COMPLET']);
@@ -16,11 +17,16 @@ const SCAN_ACCENTS = ['#53B29A', '#6366F1', '#3B82F6', '#F59E0B', '#8B5CF6', '#F
   selector: 'app-organizer-scanner-picker-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   standalone: true,
-  imports: [RouterLink, LucideAngularModule, EmptyStateComponent, SkeletonComponent],
+  imports: [RouterLink, LucideAngularModule, EmptyStateComponent, SkeletonComponent, PageBackLinkComponent],
   template: `
     <div class="organizer-page flex w-full flex-col gap-8">
       <header class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
+          <app-page-back
+            class="mb-3"
+            link="/organisateur/tableau-de-bord"
+            label="Retour au tableau de bord"
+          />
           <div class="organizer-studio-badge mb-3">
             <lucide-angular [img]="icons.ScanLine" [size]="12"></lucide-angular>
             <span>Contrôle d'accès</span>

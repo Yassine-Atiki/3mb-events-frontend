@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { CircleCheck, LucideAngularModule, Minus, Plus } from 'lucide-angular';
 
 import { EventService } from '../../core/api/event.service';
@@ -15,6 +15,7 @@ import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
 import { EmptyStateComponent } from '../../shared/ui/empty-state/empty-state.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
+import { PageBackLinkComponent } from '../../shared/ui/page-back/page-back.component';
 import { SkeletonComponent } from '../../shared/ui/skeleton/skeleton.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
@@ -48,7 +49,8 @@ function extractErrorMessage(error: HttpErrorResponse, fallback: string): string
     InputComponent,
     SkeletonComponent,
     EmptyStateComponent,
-    StripePaymentPlaceholderComponent
+    StripePaymentPlaceholderComponent,
+    PageBackLinkComponent
   ],
   template: `
     <div class="mx-auto max-w-4xl space-y-8">
@@ -59,9 +61,15 @@ function extractErrorMessage(error: HttpErrorResponse, fallback: string): string
         </div>
       } @else if (!event()) {
         <app-ui-empty-state title="Événement introuvable" description="Cet événement n'existe pas ou a été retiré." />
+        <app-page-back link="/app/decouvrir" label="Retour au catalogue" />
       } @else {
         <div class="space-y-8">
         <div>
+          <app-page-back
+            class="mb-3"
+            [link]="['/app/decouvrir', event()!.slug]"
+            label="Retour à l'événement"
+          />
           <h1 class="text-2xl font-bold tracking-tight text-text-primary">Réservation</h1>
           <p class="mt-1 text-sm text-text-secondary">
             {{ event()!.title }} · {{ formatDateTime(event()!.startAt) }} · {{ event()!.city }}
@@ -276,10 +284,10 @@ function extractErrorMessage(error: HttpErrorResponse, fallback: string): string
             <app-ui-button
               type="button"
               variant="secondary"
-              [disabled]="currentIndex() === 0 || submitting()"
+              [disabled]="submitting()"
               (clicked)="handlePrev()"
             >
-              Précédent
+              {{ currentIndex() === 0 ? "Retour à l'événement" : 'Précédent' }}
             </app-ui-button>
             @if (currentIndex() < 2) {
               <app-ui-button type="button" (clicked)="handleNext()">Continuer</app-ui-button>
@@ -301,6 +309,7 @@ export class ReservationPage {
   private readonly paymentService = inject(PaymentService);
   private readonly authStore = inject(AuthStore);
   private readonly toast = inject(ToastService);
+  private readonly router = inject(Router);
 
   protected readonly icons = { Minus, Plus, CircleCheck };
   protected readonly steps = STEPS;
@@ -408,6 +417,15 @@ export class ReservationPage {
 
   protected handlePrev(): void {
     if (this.submitting() || this.registration()) return;
+    if (this.currentIndex() === 0) {
+      const event = this.event();
+      if (event?.slug) {
+        void this.router.navigate(['/app/decouvrir', event.slug]);
+      } else {
+        void this.router.navigate(['/app/decouvrir']);
+      }
+      return;
+    }
     this.currentIndex.update((i) => Math.max(0, i - 1));
   }
 

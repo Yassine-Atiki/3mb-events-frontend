@@ -1,9 +1,12 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
 import { AuditLogEntry, PageRequest, PageResponse, User } from '../models';
+
+export type AdminReportType = 'users' | 'events' | 'refunds' | 'audit';
+export type AdminReportFormat = 'pdf' | 'excel';
 
 export interface AuditLogSearchParams extends PageRequest {
   actorUserId?: string;
@@ -26,6 +29,19 @@ export class AdminService {
     if (params.to) httpParams = httpParams.set('to', params.to);
     return this.http.get<PageResponse<AuditLogEntry>>(`${this.baseUrl}/audit-logs`, {
       params: httpParams
+    });
+  }
+
+  /**
+   * Download a generated admin report as a file blob.
+   * Backend must return Content-Disposition: attachment; filename="..."
+   */
+  exportReport(type: AdminReportType, format: AdminReportFormat): Observable<HttpResponse<Blob>> {
+    const params = new HttpParams().set('format', format);
+    return this.http.get(`${this.baseUrl}/reports/${type}`, {
+      params,
+      observe: 'response',
+      responseType: 'blob'
     });
   }
 

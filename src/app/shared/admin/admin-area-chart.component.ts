@@ -10,7 +10,7 @@ import { ChartPoint } from '../../core/models';
     <svg
       class="block h-full w-full"
       [attr.viewBox]="'0 0 ' + width + ' ' + height"
-      preserveAspectRatio="none"
+      preserveAspectRatio="xMidYMid meet"
       role="img"
       [attr.aria-label]="ariaLabel()"
     >
@@ -44,6 +44,16 @@ import { ChartPoint } from '../../core/models';
             [attr.stroke]="color()"
             stroke-width="2"
           />
+          @if (showLabels()) {
+            <text
+              [attr.x]="node.x"
+              [attr.y]="height - 6"
+              text-anchor="middle"
+              class="admin-area-chart-label"
+            >
+              {{ node.shortLabel }}
+            </text>
+          }
         }
       }
     </svg>
@@ -53,11 +63,14 @@ export class AdminAreaChartComponent {
   readonly points = input<ChartPoint[]>([]);
   readonly color = input('#53B29A');
   readonly ariaLabel = input('Courbe de tendance');
+  /** When true, draws short month/period labels on the X-axis. */
+  readonly showLabels = input(false);
 
-  protected readonly width = 400;
-  protected readonly height = 160;
-  protected readonly padX = 12;
-  protected readonly padY = 14;
+  protected readonly width = 560;
+  protected readonly height = 180;
+  protected readonly padX = 28;
+  protected readonly padY = 16;
+  protected readonly labelBand = 28;
 
   private static nextId = 0;
   protected readonly gradientId = `admin-area-fill-${AdminAreaChartComponent.nextId}`;
@@ -69,12 +82,14 @@ export class AdminAreaChartComponent {
     const max = Math.max(1, ...pts.map((p) => p.value));
     const min = Math.min(...pts.map((p) => p.value));
     const range = max - min || 1;
+    const bottomPad = this.showLabels() ? this.padY + this.labelBand : this.padY;
     const innerW = this.width - this.padX * 2;
-    const innerH = this.height - this.padY * 2;
+    const innerH = this.height - this.padY - bottomPad;
     const step = pts.length <= 1 ? 0 : innerW / (pts.length - 1);
 
     return pts.map((point, index) => ({
       label: point.label,
+      shortLabel: shortenAxisLabel(point.label),
       value: point.value,
       x: this.padX + index * step,
       y: this.padY + innerH - ((point.value - min) / range) * innerH
@@ -87,7 +102,7 @@ export class AdminAreaChartComponent {
   protected readonly areaPath = computed(() => {
     const nodes = this.normalized();
     if (nodes.length === 0) return null;
-    const baseline = this.height - this.padY;
+    const baseline = this.height - (this.showLabels() ? this.padY + this.labelBand : this.padY);
     const line = this.buildLine(nodes, false);
     const last = nodes[nodes.length - 1];
     const first = nodes[0];
@@ -107,4 +122,15 @@ export class AdminAreaChartComponent {
     }
     return closed ? `${path} Z` : path;
   }
+}
+
+/** Prefer month token for axis: "Févr. 2026" → "Févr." */
+function shortenAxisLabel(label: string): string {
+  const trimmed = label.trim();
+  if (!trimmed) return trimmed;
+  const parts = trimmed.split(/\s+/);
+  if (parts.length >= 2 && /^\d{4}$/.test(parts[parts.length - 1])) {
+    return parts.slice(0, -1).join(' ');
+  }
+  return trimmed.length > 8 ? `${trimmed.slice(0, 7)}…` : trimmed;
 }

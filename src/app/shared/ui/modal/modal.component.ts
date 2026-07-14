@@ -8,6 +8,8 @@ import { Component, ElementRef, effect, input, output, viewChild } from '@angula
 export class ModalComponent {
   readonly open = input<boolean>(false);
   readonly title = input<string | undefined>(undefined);
+  /** Dialog width: `md` (default) or `lg` for forms with maps. */
+  readonly size = input<'md' | 'lg'>('md');
 
   readonly close = output<void>();
 

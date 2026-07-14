@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AbstractControl, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -15,9 +15,12 @@ import { eventFunctionalStatus } from '../../shared/organizer/functional-status'
 import { StatusDotComponent } from '../../shared/organizer/status-dot.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
+import { PageBackLinkComponent } from '../../shared/ui/page-back/page-back.component';
 import { SelectComponent, SelectOption } from '../../shared/ui/select/select.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { coverImageUrlValidator, isDirectImageUrl } from '../../shared/utils/validators';
+import { VenueAutocompleteComponent } from '../../shared/venues/venue-autocomplete.component';
+import { VenueEditorModalComponent } from '../../shared/venues/venue-editor-modal.component';
 
 interface WizardStep {
   id: string;
@@ -82,12 +85,20 @@ function fromDatetimeLocalValue(value: string): string {
     InputComponent,
     SelectComponent,
     EventCardPreviewComponent,
-    StatusDotComponent
+    StatusDotComponent,
+    VenueAutocompleteComponent,
+    VenueEditorModalComponent,
+    PageBackLinkComponent
   ],
   template: `
     <div class="organizer-page flex w-full flex-col gap-8">
       <header class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
+          <app-page-back
+            class="mb-3"
+            link="/organisateur/evenements"
+            label="Retour aux événements"
+          />
           <div class="organizer-studio-badge mb-3">
             <lucide-angular [img]="icons.Sparkles" [size]="12"></lucide-angular>
             <span>Atelier de création</span>
@@ -226,12 +237,13 @@ function fromDatetimeLocalValue(value: string): string {
                 formControlName="city"
                 [error]="invalid(dateVenueForm.controls.city) ? 'Ville requise.' : undefined"
               />
-              <app-ui-select
+              <app-venue-autocomplete
                 label="Lieu"
-                placeholder="Choisir un lieu"
-                [options]="venueOptions()"
+                placeholder="Rechercher un lieu…"
+                [venues]="venues()"
                 formControlName="venueId"
                 [error]="invalid(dateVenueForm.controls.venueId) ? 'Lieu requis.' : undefined"
+                (createRequested)="openVenueCreateModal()"
               />
             </form>
           }
@@ -409,6 +421,12 @@ function fromDatetimeLocalValue(value: string): string {
           <app-event-card-preview [data]="previewData()" [completeness]="previewCompleteness()" />
         </aside>
       </div>
+
+      <app-venue-editor-modal
+        [open]="venueModalOpen()"
+        (close)="venueModalOpen.set(false)"
+        (saved)="onVenueCreated($event)"
+      />
     </div>
   `
 })
@@ -422,6 +440,7 @@ export class EventWizardPage {
   private readonly venueService = inject(VenueService);
   private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
+  private readonly venueAutocomplete = viewChild(VenueAutocompleteComponent);
 
   protected readonly icons = { Plus, Trash2, Sparkles };
 
@@ -446,7 +465,7 @@ export class EventWizardPage {
 
   protected readonly categoryOptions = signal<SelectOption[]>([]);
   protected readonly venues = signal<Venue[]>([]);
-  protected readonly venueOptions = signal<SelectOption[]>([]);
+  protected readonly venueModalOpen = signal(false);
   protected readonly ticketTypesDraft = signal<DraftTicketType[]>([]);
   protected readonly ticketKind = signal<TicketTypeKind>('STANDARD');
   private readonly formVersion = signal(0);
@@ -562,7 +581,6 @@ export class EventWizardPage {
 
     this.venueService.getAll().subscribe((venues) => {
       this.venues.set(venues);
-      this.venueOptions.set(venues.map((v) => ({ value: v.id, label: `${v.name} — ${v.city}` })));
     });
 
     this.ticketForm.controls.kind.valueChanges.pipe(takeUntilDestroyed()).subscribe((kind) => {
@@ -586,6 +604,22 @@ export class EventWizardPage {
 
   protected invalid(control: AbstractControl | null | undefined): boolean {
     return !!control && control.invalid && control.touched;
+  }
+
+  protected openVenueCreateModal(): void {
+    this.venueModalOpen.set(true);
+  }
+
+  protected onVenueCreated(venue: Venue): void {
+    this.venues.update((list) => {
+      if (list.some((v) => v.id === venue.id)) {
+        return list.map((v) => (v.id === venue.id ? venue : v));
+      }
+      return [venue, ...list];
+    });
+    this.dateVenueForm.controls.venueId.setValue(venue.id);
+    queueMicrotask(() => this.venueAutocomplete()?.selectCreated(venue));
+    this.venueModalOpen.set(false);
   }
 
   protected coverImageError(): string | undefined {

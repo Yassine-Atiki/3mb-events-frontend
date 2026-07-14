@@ -1,19 +1,20 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
 
 import { AuthService } from '../../core/api/auth.service';
-import { AuthStore } from '../../core/auth/auth.store';
+import { AuthSessionService } from '../../core/auth/auth-session.service';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
+import { GoogleAuthButtonComponent } from '../../shared/ui/google-auth-button/google-auth-button.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
 @Component({
   selector: 'app-login-page',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink, ButtonComponent, InputComponent],
+  imports: [ReactiveFormsModule, RouterLink, ButtonComponent, InputComponent, GoogleAuthButtonComponent],
   template: `
     <div class="relative">
       <!-- Decorative background elements -->
@@ -31,6 +32,17 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
         <p class="mt-3 text-base text-text-secondary">
           Connectez-vous pour accéder à votre espace 3MB Events.
         </p>
+      </div>
+
+      <app-google-auth-button [showDivider]="false" />
+
+      <div class="relative my-6">
+        <div class="absolute inset-0 flex items-center">
+          <div class="w-full border-t border-gray-200"></div>
+        </div>
+        <div class="relative flex justify-center text-sm">
+          <span class="bg-surface-white px-4 font-medium text-text-secondary">ou</span>
+        </div>
       </div>
 
       <form [formGroup]="form" (ngSubmit)="submit()" class="flex flex-col gap-6">
@@ -127,9 +139,8 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 export class LoginPage {
   private readonly fb = inject(FormBuilder);
   private readonly authService = inject(AuthService);
-  private readonly authStore = inject(AuthStore);
+  private readonly authSession = inject(AuthSessionService);
   private readonly toast = inject(ToastService);
-  private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
 
   protected readonly loading = signal(false);
@@ -151,33 +162,15 @@ export class LoginPage {
       .login({ email, password })
       .pipe(finalize(() => this.loading.set(false)))
       .subscribe({
-        next: ({ user, accessToken, refreshToken }) => {
-          this.authStore.setSession(user, accessToken, refreshToken);
-          this.redirectAfterLogin();
+        next: (response) => {
+          this.authSession.completeAuthSession(response, {
+            returnUrl: this.route.snapshot.queryParamMap.get('returnUrl')
+          });
         },
         error: (error: HttpErrorResponse) => {
           this.toast.error(this.extractErrorMessage(error, 'Échec de la connexion.'));
         }
       });
-  }
-
-  private redirectAfterLogin(): void {
-    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
-    if (returnUrl) {
-      this.router.navigateByUrl(returnUrl);
-      return;
-    }
-
-    switch (this.authStore.user()?.role) {
-      case 'ORGANIZER':
-        this.router.navigate(['/organisateur/tableau-de-bord']);
-        break;
-      case 'ADMIN':
-        this.router.navigate(['/admin/tableau-de-bord']);
-        break;
-      default:
-        this.router.navigate(['/app/tableau-de-bord']);
-    }
   }
 
   private extractErrorMessage(error: HttpErrorResponse, fallback: string): string {

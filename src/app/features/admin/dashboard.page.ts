@@ -148,11 +148,16 @@ const STATUS_LABELS: Record<string, string> = {
               </div>
             </div>
 
-            <div class="mt-6 h-44">
-              <app-admin-area-chart [points]="s.usersOverTime" color="#53B29A" ariaLabel="Nouveaux utilisateurs sur 6 mois" />
+            <div class="mt-6 h-52">
+              <app-admin-area-chart
+                [points]="s.usersOverTime"
+                [showLabels]="true"
+                color="#53B29A"
+                ariaLabel="Nouveaux utilisateurs sur 6 mois"
+              />
             </div>
 
-            <div class="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-6">
+            <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               @for (point of s.usersOverTime; track point.label) {
                 <div class="admin-chart-pill">
                   <span class="admin-chart-pill-value">{{ point.value }}</span>

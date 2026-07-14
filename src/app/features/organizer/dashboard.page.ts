@@ -215,18 +215,19 @@ import { buildUrgencyList } from '../../shared/organizer/urgency.util';
               </div>
               <app-sparkline [values]="revenueSparkline()" [width]="88" [height]="32" color="#53B29A" />
             </div>
-            <div class="mt-5 h-44">
+            <div class="mt-5 h-52">
               <app-admin-area-chart
                 [points]="s.revenueOverTime"
+                [showLabels]="true"
                 color="#53B29A"
                 ariaLabel="Évolution des revenus sur 6 mois"
               />
             </div>
-            <div class="mt-4 grid grid-cols-3 gap-2">
+            <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
               @for (point of s.revenueOverTime; track point.label) {
                 <div class="rounded-lg border border-hairline bg-organizer-bg px-2 py-1.5 text-center">
                   <p class="font-mono text-xs font-semibold tabular-nums text-text-primary">{{ formatCompact(point.value) }}</p>
-                  <p class="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-secondary">{{ point.label }}</p>
+                  <p class="mt-0.5 text-[10px] font-semibold tracking-wide text-text-secondary">{{ point.label }}</p>
                 </div>
               }
             </div>
@@ -255,7 +256,7 @@ import { buildUrgencyList } from '../../shared/organizer/urgency.util';
               <div class="organizer-alert-card">
                 <p class="text-xs font-semibold uppercase tracking-wide text-text-secondary">Inscriptions récentes</p>
                 <app-mono-counter class="mt-1 block" [value]="recentRegistrations()" size="lg" />
-                <p class="mt-1 text-xs text-text-secondary">sur le dernier mois du graphique</p>
+                <p class="mt-1 text-xs text-text-secondary">sur le mois en cours</p>
               </div>
             </div>
           </section>
@@ -264,9 +265,10 @@ import { buildUrgencyList } from '../../shared/organizer/urgency.util';
             <p class="organizer-panel-eyebrow">Tendance</p>
             <h2 class="organizer-panel-title">Inscriptions</h2>
             <p class="organizer-panel-subtitle">Flux mensuel</p>
-            <div class="mt-5 h-36">
+            <div class="mt-5 h-44">
               <app-admin-area-chart
                 [points]="s.registrationsOverTime"
+                [showLabels]="true"
                 color="#6366F1"
                 ariaLabel="Évolution des inscriptions"
               />

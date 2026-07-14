@@ -1,12 +1,14 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
-import { finalize } from 'rxjs';
+import { RouterLink } from '@angular/router';
+import { finalize, map, startWith } from 'rxjs';
 
 import { AuthService } from '../../core/api/auth.service';
-import { AuthStore } from '../../core/auth/auth.store';
+import { AuthSessionService } from '../../core/auth/auth-session.service';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
+import { GoogleAuthButtonComponent } from '../../shared/ui/google-auth-button/google-auth-button.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { passwordsMatchValidator } from '../../shared/utils/validators';
@@ -14,12 +16,38 @@ import { passwordsMatchValidator } from '../../shared/utils/validators';
 @Component({
   selector: 'app-register-organizer-page',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink, ButtonComponent, InputComponent],
+  imports: [ReactiveFormsModule, RouterLink, ButtonComponent, InputComponent, GoogleAuthButtonComponent],
   template: `
     <div class="mb-7 text-center">
       <span class="page-header-badge">Organisateur</span>
       <h1 class="mt-3 text-2xl font-bold tracking-tight text-text-primary">Devenez organisateur</h1>
       <p class="mt-2 text-sm text-text-secondary">Créez, publiez et gérez vos événements sur 3MB Events.</p>
+    </div>
+
+    <app-ui-input
+      label="Organisation"
+      placeholder="Nom de votre entreprise ou association"
+      [formControl]="organizationControl"
+      [error]="organizationInvalid() ? 'Requis' : undefined"
+    />
+
+    <app-google-auth-button
+      class="mt-4 block"
+      role="ORGANIZER"
+      [organization]="organizationValue()"
+      [disabled]="!organizationReady()"
+      disabledHint="Renseignez votre organisation pour activer Continuer avec Google."
+      [showDivider]="false"
+      successMessage="Compte organisateur créé avec succès."
+    />
+
+    <div class="relative my-6">
+      <div class="absolute inset-0 flex items-center">
+        <div class="w-full border-t border-gray-200"></div>
+      </div>
+      <div class="relative flex justify-center text-sm">
+        <span class="bg-surface-white px-4 font-medium text-text-secondary">ou</span>
+      </div>
     </div>
 
     <form [formGroup]="form" (ngSubmit)="submit()" class="flex flex-col gap-4">
@@ -31,13 +59,6 @@ import { passwordsMatchValidator } from '../../shared/utils/validators';
         />
         <app-ui-input label="Nom" formControlName="lastName" [error]="invalid('lastName') ? 'Requis' : undefined" />
       </div>
-
-      <app-ui-input
-        label="Organisation"
-        placeholder="Nom de votre entreprise ou association"
-        formControlName="organization"
-        [error]="invalid('organization') ? 'Requis' : undefined"
-      />
 
       <app-ui-input
         label="Adresse email professionnelle"
@@ -88,17 +109,36 @@ import { passwordsMatchValidator } from '../../shared/utils/validators';
 export class RegisterOrganizerPage {
   private readonly fb = inject(FormBuilder);
   private readonly authService = inject(AuthService);
-  private readonly authStore = inject(AuthStore);
+  private readonly authSession = inject(AuthSessionService);
   private readonly toast = inject(ToastService);
-  private readonly router = inject(Router);
 
   protected readonly loading = signal(false);
+
+  /** Shared organization field — above Google button and mirrored into the form. */
+  protected readonly organizationControl = this.fb.nonNullable.control('', [
+    Validators.required,
+    Validators.minLength(2)
+  ]);
+
+  private readonly organizationRaw = toSignal(
+    this.organizationControl.valueChanges.pipe(
+      startWith(this.organizationControl.value),
+      map((v) => v ?? '')
+    ),
+    { initialValue: '' }
+  );
+
+  protected readonly organizationValue = computed(() => this.organizationRaw().trim());
+  protected readonly organizationReady = computed(() => this.organizationValue().length >= 2);
+
+  protected organizationInvalid(): boolean {
+    return this.organizationControl.invalid && this.organizationControl.touched;
+  }
 
   protected readonly form = this.fb.nonNullable.group(
     {
       firstName: ['', [Validators.required, Validators.minLength(2)]],
       lastName: ['', [Validators.required, Validators.minLength(2)]],
-      organization: ['', [Validators.required, Validators.minLength(2)]],
       email: ['', [Validators.required, Validators.email]],
       phone: [''],
       password: ['', [Validators.required, Validators.minLength(8)]],
@@ -114,10 +154,12 @@ export class RegisterOrganizerPage {
   }
 
   protected submit(): void {
+    this.organizationControl.markAsTouched();
     this.form.markAllAsTouched();
-    if (this.form.invalid || this.loading()) return;
+    if (this.organizationControl.invalid || this.form.invalid || this.loading()) return;
 
-    const { firstName, lastName, organization, email, phone, password } = this.form.getRawValue();
+    const { firstName, lastName, email, phone, password } = this.form.getRawValue();
+    const organization = this.organizationValue();
     this.loading.set(true);
 
     this.authService
@@ -132,10 +174,9 @@ export class RegisterOrganizerPage {
       })
       .pipe(finalize(() => this.loading.set(false)))
       .subscribe({
-        next: ({ user, accessToken, refreshToken }) => {
-          this.authStore.setSession(user, accessToken, refreshToken);
+        next: (response) => {
           this.toast.success('Compte organisateur créé avec succès.');
-          this.router.navigate(['/organisateur/tableau-de-bord']);
+          this.authSession.completeAuthSession(response, { preferQueryReturnUrl: false });
         },
         error: (error: HttpErrorResponse) => {
           this.toast.error(this.extractErrorMessage(error, "Échec de l'inscription."));

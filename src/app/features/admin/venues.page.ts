@@ -8,30 +8,9 @@ import { AdminDonutChartComponent } from '../../shared/admin/admin-donut-chart.c
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { EmptyStateComponent } from '../../shared/ui/empty-state/empty-state.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
-import { ModalComponent } from '../../shared/ui/modal/modal.component';
 import { SkeletonComponent } from '../../shared/ui/skeleton/skeleton.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
-import { ConfirmDialogService } from '../../shared/ui/confirm-dialog/confirm-dialog.service';
-
-interface VenueForm {
-  name: string;
-  address: string;
-  city: string;
-  postalCode: string;
-  country: string;
-  capacity: string;
-  description: string;
-}
-
-const EMPTY_FORM: VenueForm = {
-  name: '',
-  address: '',
-  city: '',
-  postalCode: '',
-  country: 'Maroc',
-  capacity: '',
-  description: ''
-};
+import { VenueEditorModalComponent } from '../../shared/venues/venue-editor-modal.component';
 
 @Component({
   selector: 'app-admin-venues-page',
@@ -42,10 +21,10 @@ const EMPTY_FORM: VenueForm = {
     LucideAngularModule,
     ButtonComponent,
     InputComponent,
-    ModalComponent,
     SkeletonComponent,
     EmptyStateComponent,
-    AdminDonutChartComponent
+    AdminDonutChartComponent,
+    VenueEditorModalComponent
   ],
   template: `
     <div class="admin-page flex w-full flex-col gap-8">
@@ -244,66 +223,19 @@ const EMPTY_FORM: VenueForm = {
       }
     </div>
 
-    <app-ui-modal [open]="modalOpen()" [title]="editing() ? 'Modifier le lieu' : 'Nouveau lieu'" (close)="closeModal()">
-      <div class="flex flex-col gap-4">
-        @if (form().name.trim() && form().city.trim()) {
-          <div class="admin-modal-hero">
-            <span class="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-white/70">
-              <lucide-angular [img]="icons.MapPin" [size]="13"></lucide-angular>
-              {{ form().city }}{{ form().country ? ', ' + form().country : '' }}
-            </span>
-            <p class="mt-2 text-lg font-semibold text-white">{{ form().name }}</p>
-            @if (form().capacity) {
-              <p class="mt-1 font-mono text-sm text-brand-teal-light">{{ form().capacity }} places</p>
-            }
-          </div>
-        }
-
-        <app-ui-input label="Nom" placeholder="Ex. Palais des Congrès" [ngModel]="form().name" (ngModelChange)="updateForm('name', $event)" />
-        <app-ui-input label="Adresse" placeholder="Ex. Route de l'Aéroport" [ngModel]="form().address" (ngModelChange)="updateForm('address', $event)" />
-        <div class="grid grid-cols-2 gap-3">
-          <app-ui-input label="Ville" placeholder="Ex. Casablanca" [ngModel]="form().city" (ngModelChange)="updateForm('city', $event)" />
-          <app-ui-input label="Code postal" placeholder="Ex. 20000" [ngModel]="form().postalCode" (ngModelChange)="updateForm('postalCode', $event)" />
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <app-ui-input label="Pays" placeholder="Ex. Maroc" [ngModel]="form().country" (ngModelChange)="updateForm('country', $event)" />
-          <app-ui-input
-            label="Capacité"
-            type="number"
-            placeholder="Ex. 500"
-            [ngModel]="form().capacity"
-            (ngModelChange)="updateForm('capacity', $event)"
-          />
-        </div>
-        <div class="flex flex-col gap-1.5">
-          <label class="text-sm font-medium text-text-primary">Description</label>
-          <textarea
-            rows="3"
-            class="w-full rounded-xl border border-hairline bg-surface-white px-4 py-2.5 text-sm text-text-primary placeholder:text-text-secondary/60 focus:outline-none focus:ring-4 focus:ring-brand-teal/15"
-            placeholder="Description du lieu..."
-            [ngModel]="form().description"
-            (ngModelChange)="updateForm('description', $event)"
-          ></textarea>
-        </div>
-
-        <div class="ui-modal-footer">
-          @if (editing()) {
-            <app-ui-button variant="danger" [loading]="deleting()" (clicked)="delete(editing()!)">
-              Supprimer
-            </app-ui-button>
-          }
-          <app-ui-button [disabled]="!form().name.trim() || !form().city.trim()" [loading]="saving()" (clicked)="save()">
-            {{ editing() ? 'Enregistrer' : 'Créer' }}
-          </app-ui-button>
-        </div>
-      </div>
-    </app-ui-modal>
+    <app-venue-editor-modal
+      [open]="modalOpen()"
+      [venue]="editing()"
+      [allowDelete]="true"
+      (close)="closeModal()"
+      (saved)="onVenueSaved()"
+      (deleted)="onVenueDeleted()"
+    />
   `
 })
 export class AdminVenuesPage {
   private readonly venueService = inject(VenueService);
   private readonly toast = inject(ToastService);
-  private readonly confirmDialog = inject(ConfirmDialogService);
 
   protected readonly icons = { Building2, MapPin, Plus, Search, Users };
 
@@ -314,9 +246,6 @@ export class AdminVenuesPage {
 
   protected readonly modalOpen = signal(false);
   protected readonly editing = signal<Venue | null>(null);
-  protected readonly form = signal<VenueForm>({ ...EMPTY_FORM });
-  protected readonly saving = signal(false);
-  protected readonly deleting = signal(false);
 
   protected readonly uniqueCities = computed(() =>
     [...new Set(this.venues().map((venue) => venue.city))].sort((a, b) => a.localeCompare(b, 'fr'))
@@ -373,88 +302,27 @@ export class AdminVenuesPage {
 
   protected openEdit(venue: Venue): void {
     this.editing.set(venue);
-    this.form.set({
-      name: venue.name,
-      address: venue.address,
-      city: venue.city,
-      postalCode: venue.postalCode ?? '',
-      country: venue.country,
-      capacity: venue.capacity ? String(venue.capacity) : '',
-      description: venue.description ?? ''
-    });
     this.modalOpen.set(true);
   }
 
   protected openCreateModal(): void {
     this.editing.set(null);
-    this.form.set({ ...EMPTY_FORM });
     this.modalOpen.set(true);
   }
 
   protected closeModal(): void {
     this.modalOpen.set(false);
+    this.editing.set(null);
   }
 
-  protected updateForm<K extends keyof VenueForm>(key: K, value: VenueForm[K]): void {
-    this.form.update((form) => ({ ...form, [key]: value }));
+  protected onVenueSaved(): void {
+    this.closeModal();
+    this.fetchVenues();
   }
 
-  protected save(): void {
-    const form = this.form();
-    const name = form.name.trim();
-    const city = form.city.trim();
-    if (!name || !city) return;
-
-    const payload = {
-      name,
-      address: form.address.trim(),
-      city,
-      postalCode: form.postalCode.trim() || undefined,
-      country: form.country.trim() || 'Maroc',
-      capacity: form.capacity ? Number(form.capacity) : undefined,
-      description: form.description.trim() || undefined
-    };
-
-    this.saving.set(true);
-    const editing = this.editing();
-    const request = editing ? this.venueService.update(editing.id, payload) : this.venueService.create(payload);
-
-    request.subscribe({
-      next: () => {
-        this.saving.set(false);
-        this.toast.success(editing ? 'Lieu mis à jour.' : 'Lieu créé.');
-        this.closeModal();
-        this.fetchVenues();
-      },
-      error: () => {
-        this.saving.set(false);
-        this.toast.error("Impossible d'enregistrer ce lieu.");
-      }
-    });
-  }
-
-  protected async delete(venue: Venue): Promise<void> {
-    const confirmed = await this.confirmDialog.confirm({
-      title: 'Supprimer ce lieu ?',
-      message: `« ${venue.name} » sera définitivement retiré. Cette action est irréversible.`,
-      confirmLabel: 'Supprimer',
-      cancelLabel: 'Annuler',
-      tone: 'danger'
-    });
-    if (!confirmed) return;
-    this.deleting.set(true);
-    this.venueService.delete(venue.id).subscribe({
-      next: () => {
-        this.deleting.set(false);
-        this.toast.success('Lieu supprimé.');
-        this.closeModal();
-        this.fetchVenues();
-      },
-      error: () => {
-        this.deleting.set(false);
-        this.toast.error('Impossible de supprimer ce lieu.');
-      }
-    });
+  protected onVenueDeleted(): void {
+    this.closeModal();
+    this.fetchVenues();
   }
 
   private fetchVenues(): void {

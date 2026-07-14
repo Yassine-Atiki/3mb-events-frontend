@@ -9,3 +9,4 @@ export * from './payment.service';
 export * from './refund.service';
 export * from './admin.service';
 export * from './stats.service';
+export * from './nominatim.service';

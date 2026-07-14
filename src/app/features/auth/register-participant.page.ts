@@ -1,12 +1,13 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
 
 import { AuthService } from '../../core/api/auth.service';
-import { AuthStore } from '../../core/auth/auth.store';
+import { AuthSessionService } from '../../core/auth/auth-session.service';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
+import { GoogleAuthButtonComponent } from '../../shared/ui/google-auth-button/google-auth-button.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { passwordsMatchValidator } from '../../shared/utils/validators';
@@ -14,12 +15,27 @@ import { passwordsMatchValidator } from '../../shared/utils/validators';
 @Component({
   selector: 'app-register-participant-page',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink, ButtonComponent, InputComponent],
+  imports: [ReactiveFormsModule, RouterLink, ButtonComponent, InputComponent, GoogleAuthButtonComponent],
   template: `
     <div class="mb-7 text-center">
       <span class="page-header-badge">Participant</span>
       <h1 class="mt-3 text-2xl font-bold tracking-tight text-text-primary">Créer un compte participant</h1>
       <p class="mt-2 text-sm text-text-secondary">Réservez vos places et gérez vos billets en quelques secondes.</p>
+    </div>
+
+    <app-google-auth-button
+      role="PARTICIPANT"
+      [showDivider]="false"
+      successMessage="Bienvenue sur 3MB Events !"
+    />
+
+    <div class="relative my-6">
+      <div class="absolute inset-0 flex items-center">
+        <div class="w-full border-t border-gray-200"></div>
+      </div>
+      <div class="relative flex justify-center text-sm">
+        <span class="bg-surface-white px-4 font-medium text-text-secondary">ou</span>
+      </div>
     </div>
 
     <form [formGroup]="form" (ngSubmit)="submit()" class="flex flex-col gap-4">
@@ -81,9 +97,8 @@ import { passwordsMatchValidator } from '../../shared/utils/validators';
 export class RegisterParticipantPage {
   private readonly fb = inject(FormBuilder);
   private readonly authService = inject(AuthService);
-  private readonly authStore = inject(AuthStore);
+  private readonly authSession = inject(AuthSessionService);
   private readonly toast = inject(ToastService);
-  private readonly router = inject(Router);
 
   protected readonly loading = signal(false);
 
@@ -123,10 +138,9 @@ export class RegisterParticipantPage {
       })
       .pipe(finalize(() => this.loading.set(false)))
       .subscribe({
-        next: ({ user, accessToken, refreshToken }) => {
-          this.authStore.setSession(user, accessToken, refreshToken);
+        next: (response) => {
           this.toast.success('Bienvenue sur 3MB Events !');
-          this.router.navigate(['/app/tableau-de-bord']);
+          this.authSession.completeAuthSession(response, { preferQueryReturnUrl: false });
         },
         error: (error: HttpErrorResponse) => {
           this.toast.error(this.extractErrorMessage(error, "Échec de l'inscription."));

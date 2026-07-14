@@ -135,9 +135,10 @@ const TICKET_BAR_COLORS = ['#53B29A', '#6366F1', '#3B82F6', '#F59E0B', '#8B5CF6'
               </span>
             </div>
             @if (hasData(stats()?.registrationsOverTime)) {
-              <div class="mt-5 h-40">
+              <div class="mt-5 h-48">
                 <app-admin-area-chart
                   [points]="stats()!.registrationsOverTime"
+                  [showLabels]="true"
                   color="#6366F1"
                   ariaLabel="Évolution des inscriptions sur 6 mois"
                 />
@@ -164,9 +165,10 @@ const TICKET_BAR_COLORS = ['#53B29A', '#6366F1', '#3B82F6', '#F59E0B', '#8B5CF6'
               </span>
             </div>
             @if (hasData(stats()?.revenueOverTime)) {
-              <div class="mt-5 h-40">
+              <div class="mt-5 h-48">
                 <app-admin-area-chart
                   [points]="stats()!.revenueOverTime"
+                  [showLabels]="true"
                   color="#F59E0B"
                   ariaLabel="Évolution des revenus sur 6 mois"
                 />

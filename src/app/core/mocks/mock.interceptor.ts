@@ -9,7 +9,7 @@ import { catchError, map, Observable, of, throwError } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
 import { AuditLogSearchParams } from '../api/admin.service';
-import { AuthResponse, LoginRequest, RefreshTokenRequest, RegisterRequest } from '../api/auth.service';
+import { AuthResponse, GoogleAuthRequest, LoginRequest, RefreshTokenRequest, RegisterRequest } from '../api/auth.service';
 import { CreateCategoryRequest, UpdateCategoryRequest } from '../api/category.service';
 import { CreateEventRequest, UpdateEventRequest } from '../api/event.service';
 import { CreatePaymentIntentRequest } from '../api/payment.service';
@@ -63,15 +63,21 @@ import {
   mockEvents,
   mockPaymentIntents,
   mockRefunds,
+  mockRefreshTokens,
   mockRegistrations,
   mockTicketTypes,
   mockTickets,
   mockUsers,
   mockVenues,
-  DEFAULT_COVER_IMAGE
+  DEFAULT_COVER_IMAGE,
+  type MockRefreshToken
 } from './mock-data';
 
 const ACCESS_TOKEN_STORAGE_KEY = '3mb_access_token';
+/** Access token lifetime in the mock (~15 min, matches the chosen JWT strategy). */
+const ACCESS_TOKEN_TTL_MS = 15 * 60 * 1000;
+/** Refresh token lifetime (30 days). */
+const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 class MockApiError extends Error {
   constructor(
@@ -146,8 +152,97 @@ function getUserIdFromToken(token: string | null | undefined): string | null {
   if (!token) {
     return null;
   }
-  const match = /^mock-(?:access|refresh)-(.+)-\d+$/.exec(token);
-  return match ? match[1] : null;
+  // Access tokens remain parseable for the mock: mock-access-<userId>-<issuedAtMs>
+  const match = /^mock-access-(.+)-(\d+)$/.exec(token);
+  if (!match) {
+    return null;
+  }
+  const issuedAt = Number(match[2]);
+  if (!Number.isFinite(issuedAt) || Date.now() - issuedAt > ACCESS_TOKEN_TTL_MS) {
+    return null;
+  }
+  return match[1];
+}
+
+/**
+ * Mock stand-in for a real one-way hash (SHA-256 / bcrypt).
+ * Production MUST hash refresh tokens server-side; never store plaintext.
+ */
+function hashRefreshToken(token: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < token.length; i += 1) {
+    hash ^= token.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `sha256_mock_${(hash >>> 0).toString(16)}_${token.length}`;
+}
+
+function createOpaqueRefreshToken(): string {
+  const random =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID().replace(/-/g, '')
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+  return `rt_${random}${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function issueRefreshToken(userId: string): string {
+  const plain = createOpaqueRefreshToken();
+  const now = new Date();
+  const row: MockRefreshToken = {
+    id: generateId('rft'),
+    userId,
+    tokenHash: hashRefreshToken(plain),
+    expiresAt: new Date(now.getTime() + REFRESH_TOKEN_TTL_MS).toISOString(),
+    revoked: false,
+    createdAt: now.toISOString()
+  };
+  mockRefreshTokens.push(row);
+  return plain;
+}
+
+function findActiveRefreshToken(plain: string | null | undefined): MockRefreshToken | undefined {
+  if (!plain) {
+    return undefined;
+  }
+  const tokenHash = hashRefreshToken(plain);
+  const now = Date.now();
+  return mockRefreshTokens.find(
+    (row) =>
+      row.tokenHash === tokenHash &&
+      !row.revoked &&
+      new Date(row.expiresAt).getTime() > now
+  );
+}
+
+function revokeRefreshToken(plain: string | null | undefined): void {
+  if (!plain) {
+    return;
+  }
+  const tokenHash = hashRefreshToken(plain);
+  const row = mockRefreshTokens.find((item) => item.tokenHash === tokenHash && !item.revoked);
+  if (row) {
+    row.revoked = true;
+  }
+}
+
+function revokeAllRefreshTokensForUser(userId: string): void {
+  for (const row of mockRefreshTokens) {
+    if (row.userId === userId && !row.revoked) {
+      row.revoked = true;
+    }
+  }
+}
+
+function issueAccessToken(userId: string): string {
+  return `mock-access-${userId}-${Date.now()}`;
+}
+
+function buildAuthResponse(user: User): AuthResponse {
+  return {
+    user,
+    accessToken: issueAccessToken(user.id),
+    refreshToken: issueRefreshToken(user.id)
+  };
 }
 
 function getCurrentUser(req: HttpRequest<unknown>): User | null {
@@ -213,14 +308,6 @@ function queryNumber(query: HttpParams, key: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function buildAuthResponse(user: User): AuthResponse {
-  return {
-    user,
-    accessToken: `mock-access-${user.id}-${Date.now()}`,
-    refreshToken: `mock-refresh-${user.id}-${Date.now()}`
-  };
-}
-
 /* -------------------------------------------------------------------------- */
 /* AUTH                                                                       */
 /* -------------------------------------------------------------------------- */
@@ -264,7 +351,118 @@ function handleRegister(ctx: RouteContext): AuthResponse {
   return buildAuthResponse(user);
 }
 
-function handleLogout(): null {
+/** In-memory Google subject → userId map for mock linking. */
+const mockGoogleSubjects = new Map<string, string>();
+
+function decodeMockGoogleIdToken(idToken: string): {
+  sub: string;
+  email: string;
+  given_name?: string;
+  family_name?: string;
+  picture?: string;
+  email_verified?: boolean;
+} {
+  const parts = idToken.split('.');
+  if (parts.length >= 2) {
+    try {
+      const json = atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'));
+      const payload = JSON.parse(json) as Record<string, unknown>;
+      const email = typeof payload['email'] === 'string' ? payload['email'] : '';
+      const sub = typeof payload['sub'] === 'string' ? payload['sub'] : '';
+      if (email && sub) {
+        return {
+          sub,
+          email: email.toLowerCase(),
+          given_name: typeof payload['given_name'] === 'string' ? payload['given_name'] : undefined,
+          family_name: typeof payload['family_name'] === 'string' ? payload['family_name'] : undefined,
+          picture: typeof payload['picture'] === 'string' ? payload['picture'] : undefined,
+          email_verified: payload['email_verified'] !== false
+        };
+      }
+    } catch {
+      /* fall through to opaque mock token */
+    }
+  }
+
+  // Opaque demo token: "mock-google:<email>" or any string → stable mock profile
+  const emailMatch = /^mock-google:(.+)$/i.exec(idToken.trim());
+  const email = (emailMatch?.[1] ?? `google.${idToken.slice(0, 8)}@mock.local`).toLowerCase();
+  return {
+    sub: `mock-sub-${email}`,
+    email,
+    given_name: 'Google',
+    family_name: 'User',
+    email_verified: true
+  };
+}
+
+function handleGoogleAuth(ctx: RouteContext): AuthResponse {
+  const payload = ctx.body as GoogleAuthRequest;
+  if (!payload?.idToken) {
+    throw new MockApiError(400, 'Google ID token is required', 'VALIDATION_ERROR');
+  }
+
+  const profile = decodeMockGoogleIdToken(payload.idToken);
+  if (profile.email_verified === false) {
+    throw new MockApiError(401, 'Google email is not verified', 'EMAIL_NOT_VERIFIED');
+  }
+
+  let user: User | undefined;
+  const linkedUserId = mockGoogleSubjects.get(profile.sub);
+  if (linkedUserId) {
+    user = findUserById(linkedUserId);
+  }
+  if (!user) {
+    user = findUserByEmail(profile.email);
+    if (user) {
+      mockGoogleSubjects.set(profile.sub, user.id);
+      if (!user.firstName && profile.given_name) user.firstName = profile.given_name;
+      if (!user.lastName && profile.family_name) user.lastName = profile.family_name;
+      if (!user.avatarUrl && profile.picture) user.avatarUrl = profile.picture;
+    }
+  }
+
+  if (!user) {
+    const role: UserRole = payload.role ?? 'PARTICIPANT';
+    if (role === 'ADMIN') {
+      throw new MockApiError(400, 'Cannot self-register as ADMIN', 'INVALID_ROLE');
+    }
+    if (role === 'ORGANIZER' && !payload.organization?.trim()) {
+      throw new MockApiError(400, 'Organization is required for organizers', 'ORGANIZATION_REQUIRED');
+    }
+    const now = new Date().toISOString();
+    user = {
+      id: generateId('usr'),
+      email: profile.email,
+      firstName: profile.given_name || profile.email.split('@')[0] || 'Utilisateur',
+      lastName: profile.family_name || '.',
+      role,
+      status: 'ACTIVE',
+      organization: role === 'ORGANIZER' ? payload.organization!.trim() : undefined,
+      avatarUrl: profile.picture,
+      createdAt: now,
+      lastLoginAt: now
+    };
+    mockUsers.push(user);
+    mockGoogleSubjects.set(profile.sub, user.id);
+  }
+
+  if (user.status !== 'ACTIVE') {
+    throw new MockApiError(403, 'Ce compte est désactivé.', 'ACCOUNT_DISABLED');
+  }
+
+  user.lastLoginAt = new Date().toISOString();
+  return buildAuthResponse(user);
+}
+
+function handleLogout(ctx: RouteContext): null {
+  const payload = (ctx.body ?? {}) as { refreshToken?: string };
+  if (payload.refreshToken) {
+    revokeRefreshToken(payload.refreshToken);
+  } else if (ctx.currentUser) {
+    // Fallback: revoke all sessions for the authenticated user (Bearer access token).
+    revokeAllRefreshTokensForUser(ctx.currentUser.id);
+  }
   return null;
 }
 
@@ -274,12 +472,21 @@ function handleMe(ctx: RouteContext): User {
 
 function handleRefresh(ctx: RouteContext): AuthResponse {
   const payload = ctx.body as RefreshTokenRequest;
-  const userId = getUserIdFromToken(payload.refreshToken);
-  const user = userId ? findUserById(userId) : undefined;
-  if (!user) {
+  const row = findActiveRefreshToken(payload.refreshToken);
+  if (!row) {
     throw new MockApiError(401, 'Refresh token invalide.', 'INVALID_REFRESH_TOKEN');
   }
-  return buildAuthResponse(user);
+  const user = findUserById(row.userId);
+  if (!user || user.status !== 'ACTIVE') {
+    throw new MockApiError(401, 'Refresh token invalide.', 'INVALID_REFRESH_TOKEN');
+  }
+  // Strategy: issue a new short-lived access token; keep the same opaque refresh token
+  // until expiry/logout (frontend AuthResponse still includes refreshToken).
+  return {
+    user,
+    accessToken: issueAccessToken(user.id),
+    refreshToken: payload.refreshToken
+  };
 }
 
 function handleForgotPassword(): null {
@@ -360,6 +567,9 @@ function handleUpdateUserStatus(ctx: RouteContext): User {
     throw new MockApiError(404, 'Utilisateur introuvable.');
   }
   user.status = (ctx.body as { status: UserStatus }).status;
+  if (user.status === 'SUSPENDED' || user.status === 'INACTIVE') {
+    revokeAllRefreshTokensForUser(user.id);
+  }
   return user;
 }
 
@@ -1035,6 +1245,7 @@ function handleSuspendUser(ctx: RouteContext): User {
     throw new MockApiError(404, 'Utilisateur introuvable.');
   }
   target.status = 'SUSPENDED';
+  revokeAllRefreshTokensForUser(target.id);
   mockAuditLogs.unshift({
     id: generateId('audit'),
     actorUserId: admin.id,
@@ -1098,6 +1309,7 @@ const routes: MockRoute[] = [
   // AUTH
   { method: 'POST', pattern: '/auth/login', handler: handleLogin },
   { method: 'POST', pattern: '/auth/register', status: 201, handler: handleRegister },
+  { method: 'POST', pattern: '/auth/google', handler: handleGoogleAuth },
   { method: 'POST', pattern: '/auth/logout', handler: handleLogout },
   { method: 'GET', pattern: '/auth/me', handler: handleMe },
   { method: 'POST', pattern: '/auth/refresh', handler: handleRefresh },

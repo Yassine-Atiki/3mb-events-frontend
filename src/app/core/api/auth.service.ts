@@ -30,6 +30,22 @@ export interface RefreshTokenRequest {
   refreshToken: string;
 }
 
+export interface GoogleAuthRequest {
+  idToken: string;
+  role?: UserRole;
+  organization?: string;
+}
+
+/**
+ * Backend may return a full AuthResponse or a minimal refresh payload.
+ * Optional fields keep the previous session values when omitted.
+ */
+export interface RefreshResponse {
+  accessToken: string;
+  refreshToken?: string;
+  user?: User;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly http = inject(HttpClient);
@@ -43,16 +59,23 @@ export class AuthService {
     return this.http.post<AuthResponse>(`${this.baseUrl}/register`, payload);
   }
 
-  logout(): Observable<void> {
-    return this.http.post<void>(`${this.baseUrl}/logout`, {});
+  googleLogin(payload: GoogleAuthRequest): Observable<AuthResponse> {
+    return this.http.post<AuthResponse>(`${this.baseUrl}/google`, payload);
+  }
+
+  logout(refreshToken?: string | null): Observable<void> {
+    return this.http.post<void>(
+      `${this.baseUrl}/logout`,
+      refreshToken ? { refreshToken } : {}
+    );
   }
 
   me(): Observable<User> {
     return this.http.get<User>(`${this.baseUrl}/me`);
   }
 
-  refreshToken(payload: RefreshTokenRequest): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>(`${this.baseUrl}/refresh`, payload);
+  refreshToken(payload: RefreshTokenRequest): Observable<RefreshResponse> {
+    return this.http.post<RefreshResponse>(`${this.baseUrl}/refresh`, payload);
   }
 
   forgotPassword(email: string): Observable<void> {

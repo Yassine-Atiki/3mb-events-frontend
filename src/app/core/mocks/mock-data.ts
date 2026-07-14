@@ -23,6 +23,16 @@ export interface MockCredential {
   password: string;
 }
 
+/** In-memory stand-in for the backend `refresh_tokens` table. */
+export interface MockRefreshToken {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: string;
+  revoked: boolean;
+  createdAt: string;
+}
+
 const MONTH_LABELS_FR = [
   'Jan',
   'Fév',
@@ -143,6 +153,9 @@ export const mockCredentials: MockCredential[] = mockUsers.map((user) => ({
   email: user.email,
   password: MOCK_PASSWORD
 }));
+
+/** Persisted refresh-token rows (hashed). Cleared only by revoke / expiry checks. */
+export const mockRefreshTokens: MockRefreshToken[] = [];
 
 /* -------------------------------------------------------------------------- */
 /* Categories                                                                 */

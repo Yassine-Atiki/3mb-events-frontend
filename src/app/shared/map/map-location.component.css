@@ -1,0 +1,222 @@
+:host {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+}
+
+.mb-map {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.mb-map-search {
+  /* Must sit above Leaflet panes (tile 200 … control 1000). */
+  position: relative;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--color-brand-teal) 16%, var(--color-hairline));
+  background: #fff;
+  padding: 0.55rem 0.75rem;
+}
+
+.mb-map-search-icon {
+  flex-shrink: 0;
+  color: var(--color-brand-teal-dark);
+  opacity: 0.8;
+}
+
+.mb-map-search-input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  font-size: 0.875rem;
+  color: var(--color-text-primary);
+  outline: none;
+}
+
+.mb-map-search-clear {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--color-surface-light);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.mb-map-search-result {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 0.5rem;
+  border: 0;
+  border-radius: 0.55rem;
+  background: transparent;
+  padding: 0.55rem 0.6rem;
+  font-size: 0.8rem;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.mb-map-search-result:hover {
+  background: color-mix(in srgb, var(--color-brand-teal) 10%, white);
+}
+
+.mb-map-search-list {
+  margin: 0;
+  padding: 0.35rem;
+  list-style: none;
+}
+
+.mb-map-search-status {
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.mb-map-search-results {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  left: 0;
+  z-index: 1;
+  margin: 0;
+  max-height: 16rem;
+  overflow-y: auto;
+  border-radius: 0.85rem;
+  border: 1px solid var(--color-hairline);
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(19, 26, 23, 0.18);
+}
+
+.mb-map-frame {
+  /* Trap Leaflet z-indexes so they cannot cover the search dropdown. */
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--color-brand-teal) 14%, var(--color-hairline));
+  background: #dce5ea;
+}
+
+.mb-map-host {
+  width: 100%;
+  height: 240px;
+  margin: 0;
+  padding: 0;
+  background: #dce5ea;
+}
+
+.mb-map--view .mb-map-frame {
+  border: 0;
+  border-radius: 0;
+}
+
+.mb-map--view .mb-map-host {
+  height: 192px;
+}
+
+.mb-map-hint {
+  position: absolute;
+  right: 0.6rem;
+  bottom: 0.6rem;
+  left: 0.6rem;
+  z-index: 500;
+  margin: 0;
+  border-radius: 0.6rem;
+  border: 1px solid rgba(83, 178, 154, 0.2);
+  background: rgba(255, 255, 255, 0.94);
+  padding: 0.4rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  pointer-events: none;
+}
+
+.mb-map-caption {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--color-hairline);
+  background: #fff;
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+}
+
+:host ::ng-deep .leaflet-container {
+  width: 100% !important;
+  height: 100% !important;
+  background: #dce5ea;
+  font: inherit;
+}
+
+:host ::ng-deep .leaflet-control-zoom {
+  margin: 0.55rem !important;
+  border: 1px solid var(--color-hairline) !important;
+  border-radius: 0.65rem !important;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(19, 26, 23, 0.1) !important;
+}
+
+:host ::ng-deep .leaflet-control-zoom a {
+  width: 1.85rem !important;
+  height: 1.85rem !important;
+  line-height: 1.85rem !important;
+  background: #fff !important;
+  color: var(--color-brand-teal-dark) !important;
+}
+
+:host ::ng-deep .leaflet-control-attribution {
+  background: rgba(255, 255, 255, 0.85) !important;
+  font-size: 0.6rem !important;
+}
+
+:host ::ng-deep .mb-map-user-marker,
+:host ::ng-deep .mb-map-venue-marker {
+  background: transparent !important;
+  border: 0 !important;
+}
+
+:host ::ng-deep .mb-map-user-marker {
+  display: grid;
+  place-items: center;
+}
+
+:host ::ng-deep .mb-map-user-halo {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  background: rgba(66, 133, 244, 0.22);
+  box-shadow: 0 0 0 8px rgba(66, 133, 244, 0.1);
+  pointer-events: none;
+}
+
+:host ::ng-deep .mb-map-user-dot {
+  position: relative;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  border: 2.5px solid #fff;
+  background: #4285f4;
+  box-shadow: 0 1px 4px rgba(26, 115, 232, 0.55);
+  pointer-events: none;
+}
+
+:host ::ng-deep .mb-map-venue-pin {
+  display: block;
+  filter: drop-shadow(0 3px 6px rgba(15, 46, 36, 0.35));
+  pointer-events: none;
+}

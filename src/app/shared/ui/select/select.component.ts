@@ -240,8 +240,10 @@ export class SelectComponent implements ControlValueAccessor {
     const rect = trigger.getBoundingClientRect();
     const panelMaxHeight = 256;
     const gap = 6;
+    const minPanelHeight = 96; // always room for at least ~2 options (PDF + Excel)
     const spaceBelow = window.innerHeight - rect.bottom;
-    const openUp = spaceBelow < panelMaxHeight + gap && rect.top > spaceBelow;
+    const spaceAbove = rect.top;
+    const openUp = spaceBelow < minPanelHeight + gap && spaceAbove > spaceBelow;
 
     if (openUp) {
       this.panelStyle.set({
@@ -249,7 +251,8 @@ export class SelectComponent implements ControlValueAccessor {
         left: `${rect.left}px`,
         width: `${rect.width}px`,
         bottom: `${window.innerHeight - rect.top + gap}px`,
-        'max-height': `${Math.min(panelMaxHeight, rect.top - gap - 8)}px`
+        'max-height': `${Math.max(minPanelHeight, Math.min(panelMaxHeight, spaceAbove - gap - 8))}px`,
+        'z-index': '1200'
       });
     } else {
       this.panelStyle.set({
@@ -257,7 +260,8 @@ export class SelectComponent implements ControlValueAccessor {
         left: `${rect.left}px`,
         width: `${rect.width}px`,
         top: `${rect.bottom + gap}px`,
-        'max-height': `${Math.min(panelMaxHeight, spaceBelow - gap - 8)}px`
+        'max-height': `${Math.max(minPanelHeight, Math.min(panelMaxHeight, spaceBelow - gap - 8))}px`,
+        'z-index': '1200'
       });
     }
   }

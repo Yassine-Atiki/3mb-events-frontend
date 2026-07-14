@@ -20,12 +20,23 @@ import { Category, Event, TicketType, Venue } from '../../core/models';
 import { BadgeComponent } from '../../shared/ui/badge/badge.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { EmptyStateComponent } from '../../shared/ui/empty-state/empty-state.component';
+import { PageBackLinkComponent } from '../../shared/ui/page-back/page-back.component';
 import { SkeletonComponent } from '../../shared/ui/skeleton/skeleton.component';
+import { MapLocationComponent } from '../../shared/map/map-location.component';
 
 @Component({
   selector: 'app-event-detail-page',
   standalone: true,
-  imports: [RouterLink, LucideAngularModule, ButtonComponent, BadgeComponent, SkeletonComponent, EmptyStateComponent],
+  imports: [
+    RouterLink,
+    LucideAngularModule,
+    ButtonComponent,
+    BadgeComponent,
+    SkeletonComponent,
+    EmptyStateComponent,
+    MapLocationComponent,
+    PageBackLinkComponent
+  ],
   template: `
     @if (loading()) {
       <div class="mx-auto max-w-5xl px-4 py-10 sm:px-6">
@@ -45,6 +56,7 @@ import { SkeletonComponent } from '../../shared/ui/skeleton/skeleton.component';
       </div>
     } @else {
       <div class="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
+        <app-page-back class="mb-4" [link]="catalogLink()" label="Retour au catalogue" />
         <div class="relative h-52 w-full overflow-hidden rounded-3xl bg-surface-light sm:h-72">
           @if (event()!.coverImageUrl) {
             <img [src]="event()!.coverImageUrl" [alt]="event()!.title" class="h-full w-full object-cover" />
@@ -125,17 +137,26 @@ import { SkeletonComponent } from '../../shared/ui/skeleton/skeleton.component';
               </div>
             </div>
 
-            <!-- TODO: intégration Google Maps / Leaflet -->
+            <!-- Leaflet map (venue coordinates) -->
             <div class="mt-6 overflow-hidden rounded-2xl border border-brand-teal/10 shadow-card">
-              <div class="app-mesh flex h-48 flex-col items-center justify-center gap-2 text-text-secondary">
-                <span class="flex h-11 w-11 items-center justify-center rounded-full bg-white text-brand-teal-dark shadow-card">
-                  <lucide-angular [img]="icons.MapPin" [size]="22"></lucide-angular>
-                </span>
-                <p class="text-sm font-medium text-text-primary">Carte interactive à venir</p>
-                <p class="max-w-xs text-center text-xs text-text-secondary">
-                  {{ venue()?.address ?? event()!.city }}{{ venue()?.city ? ', ' + venue()!.city : '' }}
-                </p>
-              </div>
+              @if (venue()?.latitude != null && venue()?.longitude != null) {
+                <app-map-location
+                  mode="view"
+                  [latitude]="venue()!.latitude!"
+                  [longitude]="venue()!.longitude!"
+                  [caption]="venueMapCaption()"
+                />
+              } @else {
+                <div class="app-mesh flex h-48 flex-col items-center justify-center gap-2 text-text-secondary">
+                  <span class="flex h-11 w-11 items-center justify-center rounded-full bg-white text-brand-teal-dark shadow-card">
+                    <lucide-angular [img]="icons.MapPin" [size]="22"></lucide-angular>
+                  </span>
+                  <p class="text-sm font-medium text-text-primary">{{ venue()?.name ?? 'Lieu' }}</p>
+                  <p class="max-w-xs text-center text-xs text-text-secondary">
+                    {{ venue()?.address ?? event()!.city }}{{ venue()?.city ? ', ' + venue()!.city : '' }}
+                  </p>
+                </div>
+              }
             </div>
           </div>
 
@@ -245,6 +266,13 @@ export class EventDetailPage {
   protected readonly selectedTicket = computed(
     () => this.ticketTypes().find((tt) => tt.id === this.selectedTicketId()) ?? null
   );
+
+  protected readonly venueMapCaption = computed(() => {
+    const venue = this.venue();
+    if (!venue) return null;
+    const parts = [venue.address, venue.city, venue.postalCode].filter(Boolean);
+    return parts.join(', ');
+  });
 
   protected readonly countdown = computed(() => {
     const event = this.event();

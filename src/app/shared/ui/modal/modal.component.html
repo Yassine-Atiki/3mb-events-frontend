@@ -8,7 +8,9 @@
 
     <div
       #dialog
-      class="relative z-10 w-full max-w-lg rounded-2xl border border-brand-teal/10 bg-surface-white p-6 shadow-2xl focus:outline-none"
+      class="relative z-10 w-full rounded-2xl border border-brand-teal/10 bg-surface-white p-6 shadow-2xl focus:outline-none"
+      [class.max-w-lg]="size() === 'md'"
+      [class.max-w-2xl]="size() === 'lg'"
       role="dialog"
       aria-modal="true"
       [attr.aria-label]="title()"

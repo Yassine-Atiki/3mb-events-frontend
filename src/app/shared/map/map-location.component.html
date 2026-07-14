@@ -1,0 +1,68 @@
+<div class="mb-map" [class.mb-map--edit]="mode() === 'edit'" [class.mb-map--view]="mode() === 'view'">
+  @if (mode() === 'edit') {
+  <div class="mb-map-search">
+    <lucide-angular [img]="icons.Search" [size]="15" class="mb-map-search-icon"></lucide-angular>
+    <input
+      type="text"
+      class="mb-map-search-input"
+      placeholder="Rechercher une adresse au Maroc…"
+      autocomplete="off"
+      spellcheck="false"
+      [ngModel]="searchQuery()"
+      (ngModelChange)="onSearchInput($event)"
+      (focus)="searchOpen.set(searchAttempted() && searchQuery().trim().length >= 2)"
+    />
+    @if (searchQuery()) {
+    <button type="button" class="mb-map-search-clear" (click)="clearSearch()" aria-label="Effacer la recherche">
+      <lucide-angular [img]="icons.X" [size]="14"></lucide-angular>
+    </button>
+    }
+    @if (searchOpen()) {
+    <div class="mb-map-search-results" role="listbox">
+      @if (searchResults().length > 0) {
+      <ul class="mb-map-search-list">
+        @for (result of searchResults(); track result.lat + result.lon + result.display_name) {
+        <li>
+          <button type="button" class="mb-map-search-result" (click)="selectSearchResult(result)">
+            <lucide-angular [img]="icons.MapPin" [size]="13" class="shrink-0 text-brand-teal-dark"></lucide-angular>
+            <span class="min-w-0 flex-1 text-left leading-snug">{{ result.display_name }}</span>
+          </button>
+        </li>
+        }
+      </ul>
+      } @else if (searching()) {
+      <p class="mb-map-search-status">Recherche au Maroc…</p>
+      } @else {
+      <p class="mb-map-search-status">Aucun résultat au Maroc</p>
+      }
+    </div>
+    }
+  </div>
+  }
+
+  <div class="mb-map-frame">
+    <div
+      #mapHost
+      class="mb-map-host"
+      role="presentation"
+      [style.height.px]="hostHeightPx()"
+      [style.minHeight.px]="hostHeightPx()"
+      [style.maxHeight.px]="hostHeightPx()"
+    ></div>
+    @if (mode() === 'edit') {
+    <p class="mb-map-hint">
+      @if (!mapReady()) {
+      Chargement de la carte…
+      } @else if (reverseBusy()) {
+      Adresse en cours de résolution…
+      } @else {
+      Cliquez sur la carte ou déplacez le marqueur pour définir la position.
+      }
+    </p>
+    }
+  </div>
+
+  @if (mode() === 'view' && caption()) {
+  <p class="mb-map-caption">{{ caption() }}</p>
+  }
+</div>
