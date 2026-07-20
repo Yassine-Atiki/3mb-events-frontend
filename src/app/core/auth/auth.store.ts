@@ -14,7 +14,7 @@ import {
   throwError
 } from 'rxjs';
 
-import { AuthService, LoginRequest, RegisterRequest } from '../api/auth.service';
+import { AuthService, isAuthResponse, LoginRequest, RegisterRequest } from '../api/auth.service';
 import { User } from '../models';
 
 const ACCESS_TOKEN_KEY = '3mb_access_token';
@@ -72,8 +72,7 @@ export const AuthStore = signalStore(
   withComputed(({ user, accessToken }) => ({
     isAuthenticated: computed(() => !!accessToken() && !!user()),
     isAdmin: computed(() => user()?.role === 'ADMIN'),
-    isOrganizer: computed(() => user()?.role === 'ORGANIZER'),
-    isParticipant: computed(() => user()?.role === 'PARTICIPANT')
+    isOrganizer: computed(() => user()?.role === 'ORGANIZER')
   })),
   withMethods((store) => ({
     setSession(user: User, accessToken: string, refreshToken: string): void {
@@ -237,7 +236,14 @@ export const AuthStore = signalStore(
         tap(() => store.setLoading(true)),
         switchMap((credentials) =>
           authService.login(credentials).pipe(
-            tap(({ user, accessToken, refreshToken }) => store.setSession(user, accessToken, refreshToken)),
+            tap((result) => {
+              if (isAuthResponse(result)) {
+                store.setSession(result.user, result.accessToken, result.refreshToken);
+              } else {
+                store.setLoading(false);
+                store.setError('Une vérification 2FA est requise. Utilisez la page de connexion.');
+              }
+            }),
             catchError((error: HttpErrorResponse) => {
               store.setError(extractErrorMessage(error, 'Échec de la connexion.'));
               return EMPTY;
@@ -294,13 +300,15 @@ export const AuthStore = signalStore(
     ),
     logout(): void {
       const refreshToken = store.refreshToken();
-      authService
-        .logout(refreshToken)
-        .pipe(
-          catchError(() => of(null)),
-          tap(() => store.clearSession())
-        )
-        .subscribe();
+      // Clear locally first so guestGuard / login cannot reuse a stale session
+      // while the logout HTTP call is still in flight.
+      store.clearSession();
+      if (refreshToken) {
+        authService
+          .logout(refreshToken)
+          .pipe(catchError(() => of(null)))
+          .subscribe();
+      }
     }
   })),
   withHooks({

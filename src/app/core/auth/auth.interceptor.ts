@@ -14,10 +14,13 @@ function isAuthExemptUrl(url: string): boolean {
     path.startsWith('/auth/login') ||
     path.startsWith('/auth/register') ||
     path.startsWith('/auth/google') ||
+    path.startsWith('/auth/2fa/verify') ||
     path.startsWith('/auth/refresh') ||
     path.startsWith('/auth/forgot-password') ||
     path.startsWith('/auth/reset-password') ||
-    path.startsWith('/auth/logout')
+    path.startsWith('/auth/logout') ||
+    path.startsWith('/public/') ||
+    path.startsWith('/tickets/info')
   );
 }
 

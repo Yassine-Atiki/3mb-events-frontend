@@ -30,6 +30,8 @@ export interface CreateEventRequest {
   visibility: EventVisibility;
   isFree: boolean;
   priceFrom?: number;
+  /** When creating: BROUILLON (default) or PUBLIE. */
+  status?: EventStatus;
 }
 
 export type UpdateEventRequest = Partial<CreateEventRequest>;
@@ -88,5 +90,20 @@ export class EventService {
     return this.http.get<PageResponse<Event>>(`${this.baseUrl}/organizer/${organizerId}`, {
       params: httpParams
     });
+  }
+
+  enablePublicRegistration(id: string): Observable<Event> {
+    return this.http.post<Event>(`${this.baseUrl}/${id}/public-registration`, {});
+  }
+
+  revokePublicRegistration(id: string): Observable<Event> {
+    return this.http.delete<Event>(`${this.baseUrl}/${id}/public-registration`);
+  }
+
+  sendTicketsEmail(id: string): Observable<{ sent: number; skipped: number; message: string }> {
+    return this.http.post<{ sent: number; skipped: number; message: string }>(
+      `${this.baseUrl}/${id}/send-tickets`,
+      {}
+    );
   }
 }

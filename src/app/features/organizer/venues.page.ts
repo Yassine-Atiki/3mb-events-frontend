@@ -13,7 +13,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 import { VenueEditorModalComponent } from '../../shared/venues/venue-editor-modal.component';
 
 @Component({
-  selector: 'app-admin-venues-page',
+  selector: 'app-organizer-venues-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   standalone: true,
   imports: [
@@ -36,7 +36,7 @@ import { VenueEditorModalComponent } from '../../shared/venues/venue-editor-moda
           </div>
           <h1 class="text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">Lieux</h1>
           <p class="mt-1 max-w-2xl text-sm text-text-secondary">
-            Cartographiez salles et espaces événementiels — capacité, ville et couverture géographique.
+            Gérez salles et espaces événementiels — capacité, ville et couverture géographique.
           </p>
         </div>
         <app-ui-button (clicked)="openCreateModal()">
@@ -233,7 +233,7 @@ import { VenueEditorModalComponent } from '../../shared/venues/venue-editor-moda
     />
   `
 })
-export class AdminVenuesPage {
+export class OrganizerVenuesPage {
   private readonly venueService = inject(VenueService);
   private readonly toast = inject(ToastService);
 

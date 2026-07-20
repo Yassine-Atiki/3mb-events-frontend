@@ -22,10 +22,22 @@ export interface Ticket {
   ticketTypeId: string;
   registrationId: string;
   eventId: string;
-  ownerUserId: string;
+  accessToken: string;
+  participantFirstName: string;
+  participantLastName: string;
+  participantEmail: string;
   status: TicketStatus;
   qrCode: string;
+  /** Deep-link encoded into QR images for participant read-only view. */
+  publicQrUrl?: string;
   seatLabel?: string;
   issuedAt: string;
   usedAt?: string;
+}
+
+export interface EventScanStats {
+  eventId: string;
+  scanned: number;
+  issued: number;
+  capacity: number;
 }

@@ -12,11 +12,13 @@ import {
   TrendingUp,
   Users
 } from 'lucide-angular';
-import { forkJoin } from 'rxjs';
+import { forkJoin, of, Subject, switchMap, timer } from 'rxjs';
+import { catchError, takeUntil } from 'rxjs/operators';
 
 import { EventService } from '../../core/api/event.service';
 import { RefundService } from '../../core/api/refund.service';
 import { StatsService } from '../../core/api/stats.service';
+import { TicketService } from '../../core/api/ticket.service';
 import { AuthStore } from '../../core/auth/auth.store';
 import { Event, OrganizerStats } from '../../core/models';
 import { AdminAreaChartComponent } from '../../shared/admin/admin-area-chart.component';
@@ -149,10 +151,16 @@ import { buildUrgencyList } from '../../shared/organizer/urgency.util';
               <div class="organizer-live-stage-body">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <span class="organizer-live-badge">
-                      <span class="organizer-live-badge-dot" aria-hidden="true"></span>
-                      Aujourd'hui · En direct
-                    </span>
+                    @if (isLiveNow()) {
+                      <span class="organizer-live-badge">
+                        <span class="organizer-live-badge-dot" aria-hidden="true"></span>
+                        Aujourd'hui · En direct
+                      </span>
+                    } @else {
+                      <span class="organizer-live-badge organizer-live-badge--idle">
+                        Aujourd'hui
+                      </span>
+                    }
                     <h2 class="mt-3 text-xl font-bold tracking-tight sm:text-2xl">{{ event.title }}</h2>
                     <p class="mt-1 text-sm text-white/75">
                       {{ formatTime(event.startAt) }} · {{ event.city }}
@@ -170,7 +178,7 @@ import { buildUrgencyList } from '../../shared/organizer/urgency.util';
                 <div class="mt-auto flex flex-col items-center gap-5 pt-8 sm:flex-row sm:justify-center sm:gap-10">
                   <app-occupancy-arc
                     [current]="liveScanned()"
-                    [max]="todayCapacity()"
+                    [max]="liveEntryMax()"
                     [size]="188"
                     [strokeWidth]="11"
                     [showRatio]="true"
@@ -181,7 +189,7 @@ import { buildUrgencyList } from '../../shared/organizer/urgency.util';
                   <div class="text-center sm:text-left">
                     <app-mono-counter [value]="liveScanned()" size="xl" />
                     <p class="mt-1 font-mono text-sm tabular-nums text-white/70">
-                      / {{ todayCapacity() }} entrées validées
+                      / {{ liveEntryMax() }} entrées validées
                     </p>
                     <p class="mt-3 max-w-xs text-xs leading-relaxed text-white/55">
                       Compteur rafraîchi à chaque scan — suivez le flux d'entrée en temps réel.
@@ -345,6 +353,7 @@ export class OrganizerDashboardPage implements OnDestroy {
   private readonly statsService = inject(StatsService);
   private readonly refundService = inject(RefundService);
   private readonly occupancyService = inject(OccupancyService);
+  private readonly ticketService = inject(TicketService);
   protected readonly authStore = inject(AuthStore);
 
   protected readonly icons = {
@@ -365,8 +374,9 @@ export class OrganizerDashboardPage implements OnDestroy {
   protected readonly pendingRefunds = signal(0);
   protected readonly occupancyByEvent = signal<Record<string, number>>({});
   protected readonly liveScanned = signal(0);
+  protected readonly liveIssued = signal(0);
 
-  private liveTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly destroy$ = new Subject<void>();
 
   protected readonly revenueSparkline = computed(() =>
     (this.stats()?.revenueOverTime ?? []).map((point) => point.value)
@@ -379,21 +389,23 @@ export class OrganizerDashboardPage implements OnDestroy {
     ).length;
   });
 
-  protected readonly todayEvent = computed(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+  protected readonly todayEvent = computed(() => this.findTodayEvent(this.events()));
 
-    return (
-      this.events().find((event) => {
-        const start = new Date(event.startAt);
-        return start >= today && start < tomorrow && event.status !== 'ANNULE' && event.status !== 'ARCHIVE';
-      }) ?? null
-    );
+  protected readonly liveEntryMax = computed(() => {
+    const event = this.todayEvent();
+    if (!event) return 100;
+    const issued = this.liveIssued();
+    return Math.max(event.capacity || 0, issued, 1);
   });
 
-  protected readonly todayCapacity = computed(() => this.todayEvent()?.capacity ?? 100);
+  protected readonly isLiveNow = computed(() => {
+    const event = this.todayEvent();
+    if (!event) return false;
+    const now = Date.now();
+    const start = new Date(event.startAt).getTime();
+    const end = new Date(event.endAt).getTime();
+    return now >= start && now <= end;
+  });
 
   protected readonly timelineEvents = computed(() =>
     buildUrgencyList(
@@ -426,14 +438,12 @@ export class OrganizerDashboardPage implements OnDestroy {
 
         this.occupancyService.forEvents(events.content.map((e) => e.id)).subscribe((occupancy) => {
           this.occupancyByEvent.set(occupancy);
-
-          const today = this.findTodayEvent(events.content);
-          if (today) {
-            const base = occupancy[today.id] ?? Math.floor(today.capacity * 0.35);
-            this.liveScanned.set(Math.min(base, today.capacity));
-            this.startLiveTick(today.capacity);
-          }
         });
+
+        const today = this.findTodayEvent(events.content);
+        if (today) {
+          this.startScanStatsPolling(today.id);
+        }
 
         this.loading.set(false);
       },
@@ -442,7 +452,8 @@ export class OrganizerDashboardPage implements OnDestroy {
   }
 
   ngOnDestroy(): void {
-    if (this.liveTimer) clearInterval(this.liveTimer);
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   protected occupancyFor(eventId: string): number {
@@ -487,17 +498,40 @@ export class OrganizerDashboardPage implements OnDestroy {
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
+    const eligible = events.filter(
+      (event) => event.status !== 'ANNULE' && event.status !== 'ARCHIVE'
+    );
+
+    const liveNow = eligible.find((event) => {
+      const start = new Date(event.startAt).getTime();
+      const end = new Date(event.endAt).getTime();
+      const now = Date.now();
+      return now >= start && now <= end;
+    });
+    if (liveNow) return liveNow;
+
     return (
-      events.find((event) => {
+      eligible.find((event) => {
         const start = new Date(event.startAt);
-        return start >= today && start < tomorrow && event.status !== 'ANNULE';
+        return start >= today && start < tomorrow;
       }) ?? null
     );
   }
 
-  private startLiveTick(capacity: number): void {
-    this.liveTimer = setInterval(() => {
-      this.liveScanned.update((v) => (v < capacity ? v + 1 : v));
-    }, 5000);
+  private startScanStatsPolling(eventId: string): void {
+    timer(0, 10_000)
+      .pipe(
+        takeUntil(this.destroy$),
+        switchMap(() =>
+          this.ticketService.getScanStats(eventId).pipe(
+            catchError(() => of(null))
+          )
+        )
+      )
+      .subscribe((stats) => {
+        if (!stats) return;
+        this.liveScanned.set(stats.scanned);
+        this.liveIssued.set(stats.issued);
+      });
   }
 }

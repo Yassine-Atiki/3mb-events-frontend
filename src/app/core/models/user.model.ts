@@ -1,4 +1,4 @@
-export type UserRole = 'PARTICIPANT' | 'ORGANIZER' | 'ADMIN';
+export type UserRole = 'ORGANIZER' | 'ADMIN';
 
 export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'PENDING_VERIFICATION';
 
@@ -10,8 +10,10 @@ export interface User {
   role: UserRole;
   status: UserStatus;
   organization?: string;
+  organizationId?: string;
   phone?: string;
   avatarUrl?: string;
   createdAt: string;
   lastLoginAt?: string;
+  totpEnabled?: boolean;
 }

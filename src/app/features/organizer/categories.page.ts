@@ -33,7 +33,7 @@ function slugify(text: string): string {
 const EMPTY_FORM: CategoryForm = { name: '', slug: '', icon: '', description: '' };
 
 @Component({
-  selector: 'app-admin-categories-page',
+  selector: 'app-organizer-categories-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   standalone: true,
   imports: [
@@ -56,7 +56,7 @@ const EMPTY_FORM: CategoryForm = { name: '', slug: '', icon: '', description: ''
           </div>
           <h1 class="text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">Catégories</h1>
           <p class="mt-1 max-w-2xl text-sm text-text-secondary">
-            Structurez le catalogue — chaque catégorie colore l'expérience billet et les statistiques plateforme.
+            Structurez le catalogue — chaque catégorie colore l'expérience billet et vos statistiques.
           </p>
         </div>
         <app-ui-button (clicked)="openCreateModal()">
@@ -279,7 +279,7 @@ const EMPTY_FORM: CategoryForm = { name: '', slug: '', icon: '', description: ''
     </app-ui-modal>
   `
 })
-export class AdminCategoriesPage {
+export class OrganizerCategoriesPage {
   private readonly categoryService = inject(CategoryService);
   private readonly toast = inject(ToastService);
   private readonly confirmDialog = inject(ConfirmDialogService);

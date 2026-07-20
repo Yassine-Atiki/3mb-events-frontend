@@ -118,7 +118,7 @@ function triggerBrowserDownload(blob: Blob, filename: string): void {
           </div>
           <h1 class="text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">Rapports</h1>
           <p class="mt-1 max-w-2xl text-sm text-text-secondary">
-            Générez des exports PDF ou Excel de l'activité plateforme — utilisateurs, événements, remboursements et audit.
+            Générez des exports PDF ou Excel de l'activité plateforme — utilisateurs, événements, remboursements et journal d'audit.
           </p>
         </div>
         <div class="rounded-full border border-brand-teal/20 bg-brand-teal/10 px-4 py-2 font-mono text-sm font-semibold tabular-nums text-brand-teal-dark">
@@ -319,7 +319,7 @@ export class AdminReportsPage {
       id: 'refunds',
       code: 'RFD-01',
       title: 'Remboursements',
-      description: 'Historique des demandes de remboursement et leur traitement administratif.',
+      description: 'Historique des demandes de remboursement traitées par les organisateurs.',
       accent: '#F59E0B',
       icon: Banknote
     },

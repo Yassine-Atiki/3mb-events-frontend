@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import {
   Banknote,
@@ -9,11 +8,9 @@ import {
   TrendingUp,
   Wallet
 } from 'lucide-angular';
-import { catchError, forkJoin, of } from 'rxjs';
 
 import { EventService } from '../../core/api/event.service';
 import { RefundService } from '../../core/api/refund.service';
-import { UserService } from '../../core/api/user.service';
 import { AuthStore } from '../../core/auth/auth.store';
 import { ChartPoint, Event, RefundRequest, RefundStatus } from '../../core/models';
 import { AdminDonutChartComponent } from '../../shared/admin/admin-donut-chart.component';
@@ -22,7 +19,7 @@ import { BadgeComponent } from '../../shared/ui/badge/badge.component';
 import { EmptyStateComponent } from '../../shared/ui/empty-state/empty-state.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
 import { SkeletonComponent } from '../../shared/ui/skeleton/skeleton.component';
-import { refundStatusBadge } from '../participant/utils/status-badges.util';
+import { refundStatusBadge } from '../../shared/organizer/status-badges.util';
 
 const STATUS_LABELS: Record<RefundStatus, string> = {
   REQUESTED: 'En cours',
@@ -193,7 +190,7 @@ type StatusFilter = 'all' | RefundStatus;
                         {{ eventTitles()[refund.eventId] || 'Événement' }}
                       </p>
                       <p class="mt-0.5 text-xs text-text-secondary">
-                        {{ userNames()[refund.userId] || 'Participant' }} · {{ formatDate(refund.requestedAt) }}
+                        {{ participantName(refund) }} · {{ formatDate(refund.requestedAt) }}
                       </p>
                       <p class="mt-2 line-clamp-2 text-xs italic text-text-secondary">"{{ refund.reason }}"</p>
                       @if (refund.adminNote) {
@@ -252,7 +249,7 @@ type StatusFilter = 'all' | RefundStatus;
                     <div class="organizer-refund-queue-item">
                       <div class="min-w-0">
                         <p class="truncate font-medium text-text-primary">
-                          {{ userNames()[refund.userId] || 'Participant' }}
+                          {{ participantName(refund) }}
                         </p>
                         <p class="truncate text-[11px] text-text-secondary">
                           {{ eventTitles()[refund.eventId] || 'Événement' }}
@@ -275,7 +272,6 @@ type StatusFilter = 'all' | RefundStatus;
 export class OrganizerRefundsPage {
   private readonly refundService = inject(RefundService);
   private readonly eventService = inject(EventService);
-  private readonly userService = inject(UserService);
   private readonly authStore = inject(AuthStore);
 
   protected readonly icons = { Banknote, Clock, Wallet, TrendingUp, Search };
@@ -297,7 +293,6 @@ export class OrganizerRefundsPage {
 
   protected readonly eventTitles = signal<Record<string, string>>({});
   protected readonly eventsById = signal<Record<string, Event>>({});
-  protected readonly userNames = signal<Record<string, string>>({});
 
   protected readonly filteredRefunds = computed(() => {
     const term = this.searchQuery().trim().toLowerCase();
@@ -312,7 +307,9 @@ export class OrganizerRefundsPage {
           refund.amount,
           refund.currency,
           this.eventTitles()[refund.eventId],
-          this.userNames()[refund.userId],
+          refund.participantEmail,
+          refund.participantFirstName,
+          refund.participantLastName,
           STATUS_LABELS[refund.status]
         ]
           .filter(Boolean)
@@ -394,6 +391,10 @@ export class OrganizerRefundsPage {
     );
   }
 
+  protected participantName(refund: RefundRequest): string {
+    return `${refund.participantFirstName} ${refund.participantLastName}`.trim();
+  }
+
   private load(): void {
     this.loading.set(true);
 
@@ -401,7 +402,6 @@ export class OrganizerRefundsPage {
       next: (res) => {
         this.refunds.set(res.content);
         this.loading.set(false);
-        this.loadLookups(res.content);
       },
       error: () => {
         this.refunds.set([]);
@@ -422,20 +422,5 @@ export class OrganizerRefundsPage {
         this.eventsById.set(byId);
       });
     }
-  }
-
-  private loadLookups(refunds: RefundRequest[]): void {
-    const uniqueUserIds = Array.from(new Set(refunds.map((refund) => refund.userId)));
-    if (uniqueUserIds.length === 0) return;
-
-    forkJoin(uniqueUserIds.map((id) => this.userService.getById(id).pipe(catchError(() => of(null))))).subscribe(
-      (users) => {
-        const map: Record<string, string> = {};
-        users.forEach((user, index) => {
-          if (user) map[uniqueUserIds[index]] = `${user.firstName} ${user.lastName}`;
-        });
-        this.userNames.set(map);
-      }
-    );
   }
 }

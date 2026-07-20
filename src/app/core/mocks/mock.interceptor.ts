@@ -9,7 +9,8 @@ import { catchError, map, Observable, of, throwError } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
 import { AuditLogSearchParams } from '../api/admin.service';
-import { AuthResponse, GoogleAuthRequest, LoginRequest, RefreshTokenRequest, RegisterRequest } from '../api/auth.service';
+import { AuthFlowResponse, AuthResponse, GoogleAuthRequest, LoginRequest, RefreshTokenRequest, RegisterRequest } from '../api/auth.service';
+import type { TwoFactorChallenge } from '../api/auth.service';
 import { CreateCategoryRequest, UpdateCategoryRequest } from '../api/category.service';
 import { CreateEventRequest, UpdateEventRequest } from '../api/event.service';
 import { CreatePaymentIntentRequest } from '../api/payment.service';
@@ -312,7 +313,7 @@ function queryNumber(query: HttpParams, key: string, fallback: number): number {
 /* AUTH                                                                       */
 /* -------------------------------------------------------------------------- */
 
-function handleLogin(ctx: RouteContext): AuthResponse {
+function handleLogin(ctx: RouteContext): AuthFlowResponse {
   const payload = ctx.body as LoginRequest;
   const credential = findCredentialByEmail(payload.email ?? '');
   const user = credential ? findUserById(credential.userId) : undefined;
@@ -322,9 +323,34 @@ function handleLogin(ctx: RouteContext): AuthResponse {
   if (user.status !== 'ACTIVE') {
     throw new MockApiError(403, 'Ce compte est désactivé.', 'ACCOUNT_DISABLED');
   }
-  user.lastLoginAt = new Date().toISOString();
-  return buildAuthResponse(user);
+  return maybeChallengeOrAuth(user);
 }
+
+function maybeChallengeOrAuth(user: User): AuthFlowResponse {
+  if (user.totpEnabled) {
+    const challenge: TwoFactorChallenge = {
+      requires2fa: true,
+      preAuthToken: `mock-preauth-${user.id}-${Date.now()}`
+    };
+    mockPreAuthTokens.set(challenge.preAuthToken, user.id);
+    return challenge;
+  }
+  user.lastLoginAt = new Date().toISOString();
+  const auth = buildAuthResponse(user);
+  return {
+    requires2fa: false,
+    user: auth.user,
+    accessToken: auth.accessToken,
+    refreshToken: auth.refreshToken
+  };
+}
+
+/** preAuthToken → userId */
+const mockPreAuthTokens = new Map<string, string>();
+/** userId → pending mock secret (setup not yet enabled) */
+const mockTotpPending = new Map<string, string>();
+/** userId → unused recovery codes (plaintext for mock only) */
+const mockRecoveryCodes = new Map<string, string[]>();
 
 function handleRegister(ctx: RouteContext): AuthResponse {
   const payload = ctx.body as RegisterRequest;
@@ -334,15 +360,22 @@ function handleRegister(ctx: RouteContext): AuthResponse {
   if (findUserByEmail(payload.email)) {
     throw new MockApiError(409, 'Un compte existe déjà avec cet email.', 'EMAIL_TAKEN');
   }
+  const role: UserRole = payload.role ?? 'ORGANIZER';
+  if (role === 'ADMIN') {
+    throw new MockApiError(400, 'Cannot self-register as ADMIN', 'INVALID_ROLE');
+  }
+  if (role === 'ORGANIZER' && !payload.organization?.trim()) {
+    throw new MockApiError(400, 'Organization is required for organizers', 'ORGANIZATION_REQUIRED');
+  }
   const now = new Date().toISOString();
   const user: User = {
     id: generateId('usr'),
     email: payload.email,
     firstName: payload.firstName,
     lastName: payload.lastName,
-    role: payload.role ?? 'PARTICIPANT',
+    role,
     status: 'ACTIVE',
-    organization: payload.organization,
+    organization: role === 'ORGANIZER' ? payload.organization!.trim() : payload.organization,
     phone: payload.phone,
     createdAt: now,
     lastLoginAt: now
@@ -396,7 +429,7 @@ function decodeMockGoogleIdToken(idToken: string): {
   };
 }
 
-function handleGoogleAuth(ctx: RouteContext): AuthResponse {
+function handleGoogleAuth(ctx: RouteContext): AuthFlowResponse {
   const payload = ctx.body as GoogleAuthRequest;
   if (!payload?.idToken) {
     throw new MockApiError(400, 'Google ID token is required', 'VALIDATION_ERROR');
@@ -423,12 +456,9 @@ function handleGoogleAuth(ctx: RouteContext): AuthResponse {
   }
 
   if (!user) {
-    const role: UserRole = payload.role ?? 'PARTICIPANT';
+    const role: UserRole = payload.role ?? 'ORGANIZER';
     if (role === 'ADMIN') {
       throw new MockApiError(400, 'Cannot self-register as ADMIN', 'INVALID_ROLE');
-    }
-    if (role === 'ORGANIZER' && !payload.organization?.trim()) {
-      throw new MockApiError(400, 'Organization is required for organizers', 'ORGANIZATION_REQUIRED');
     }
     const now = new Date().toISOString();
     user = {
@@ -438,7 +468,7 @@ function handleGoogleAuth(ctx: RouteContext): AuthResponse {
       lastName: profile.family_name || '.',
       role,
       status: 'ACTIVE',
-      organization: role === 'ORGANIZER' ? payload.organization!.trim() : undefined,
+      organization: payload.organization?.trim() || undefined,
       avatarUrl: profile.picture,
       createdAt: now,
       lastLoginAt: now
@@ -451,8 +481,7 @@ function handleGoogleAuth(ctx: RouteContext): AuthResponse {
     throw new MockApiError(403, 'Ce compte est désactivé.', 'ACCOUNT_DISABLED');
   }
 
-  user.lastLoginAt = new Date().toISOString();
-  return buildAuthResponse(user);
+  return maybeChallengeOrAuth(user);
 }
 
 function handleLogout(ctx: RouteContext): null {
@@ -512,6 +541,91 @@ function handleChangePassword(ctx: RouteContext): null {
   return null;
 }
 
+function handleTotpVerify(ctx: RouteContext): AuthResponse {
+  const payload = ctx.body as { preAuthToken?: string; code?: string };
+  if (!payload.preAuthToken || !payload.code) {
+    throw new MockApiError(400, 'Champs obligatoires manquants.', 'VALIDATION_ERROR');
+  }
+  const userId = mockPreAuthTokens.get(payload.preAuthToken);
+  if (!userId) {
+    throw new MockApiError(401, 'Session 2FA expirée ou invalide', 'INVALID_PRE_AUTH_TOKEN');
+  }
+  const user = findUserById(userId);
+  if (!user?.totpEnabled) {
+    throw new MockApiError(400, "La 2FA n'est pas activée sur ce compte", 'TOTP_NOT_ENABLED');
+  }
+  const code = payload.code.trim();
+  const recoveries = mockRecoveryCodes.get(userId) ?? [];
+  const recoveryIdx = recoveries.findIndex((c) => c.replace(/-/g, '').toUpperCase() === code.replace(/[\s-]/g, '').toUpperCase());
+  const totpOk = code === '000000' || /^\d{6}$/.test(code);
+  if (recoveryIdx >= 0) {
+    recoveries.splice(recoveryIdx, 1);
+    mockRecoveryCodes.set(userId, recoveries);
+  } else if (!totpOk) {
+    throw new MockApiError(401, 'Code 2FA invalide', 'INVALID_TOTP_CODE');
+  }
+  mockPreAuthTokens.delete(payload.preAuthToken);
+  user.lastLoginAt = new Date().toISOString();
+  return buildAuthResponse(user);
+}
+
+function handleTotpSetup(ctx: RouteContext): { secret: string; otpauthUrl: string; qrCodeDataUrl: string } {
+  const user = requireAuth(ctx.currentUser);
+  if (user.totpEnabled) {
+    throw new MockApiError(409, 'La 2FA est déjà activée', 'TOTP_ALREADY_ENABLED');
+  }
+  const secret = 'MOCKTOTPSECRET123';
+  mockTotpPending.set(user.id, secret);
+  const otpauthUrl = `otpauth://totp/3MB%20Events:${encodeURIComponent(user.email)}?secret=${secret}&issuer=3MB%20Events`;
+  // 1x1 transparent PNG
+  const qrCodeDataUrl =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  return { secret, otpauthUrl, qrCodeDataUrl };
+}
+
+function handleTotpEnable(ctx: RouteContext): { recoveryCodes: string[] } {
+  const user = requireAuth(ctx.currentUser);
+  if (user.totpEnabled) {
+    throw new MockApiError(409, 'La 2FA est déjà activée', 'TOTP_ALREADY_ENABLED');
+  }
+  if (!mockTotpPending.has(user.id)) {
+    throw new MockApiError(400, "Lancez d'abord la configuration 2FA", 'TOTP_SETUP_REQUIRED');
+  }
+  const code = (ctx.body as { code?: string })?.code?.trim() ?? '';
+  if (code !== '000000' && !/^\d{6}$/.test(code)) {
+    throw new MockApiError(400, 'Code 2FA invalide', 'INVALID_TOTP_CODE');
+  }
+  mockTotpPending.delete(user.id);
+  user.totpEnabled = true;
+  const recoveryCodes = Array.from({ length: 10 }, (_, i) => `A${i}B${i}-C${i}D${i}`);
+  mockRecoveryCodes.set(user.id, [...recoveryCodes]);
+  return { recoveryCodes };
+}
+
+function handleTotpDisable(ctx: RouteContext): null {
+  const user = requireAuth(ctx.currentUser);
+  if (!user.totpEnabled) {
+    throw new MockApiError(400, "La 2FA n'est pas activée", 'TOTP_NOT_ENABLED');
+  }
+  const code = (ctx.body as { code?: string })?.code?.trim() ?? '';
+  const recoveries = mockRecoveryCodes.get(user.id) ?? [];
+  const recoveryOk = recoveries.some(
+    (c) => c.replace(/-/g, '').toUpperCase() === code.replace(/[\s-]/g, '').toUpperCase()
+  );
+  if (code !== '000000' && !/^\d{6}$/.test(code) && !recoveryOk) {
+    throw new MockApiError(400, 'Code 2FA invalide', 'INVALID_TOTP_CODE');
+  }
+  user.totpEnabled = false;
+  mockRecoveryCodes.delete(user.id);
+  mockTotpPending.delete(user.id);
+  return null;
+}
+
+function handleTotpStatus(ctx: RouteContext): { enabled: boolean } {
+  const user = requireAuth(ctx.currentUser);
+  return { enabled: !!user.totpEnabled };
+}
+
 /* -------------------------------------------------------------------------- */
 /* USERS                                                                      */
 /* -------------------------------------------------------------------------- */
@@ -553,9 +667,26 @@ function handleUpdateProfile(ctx: RouteContext): User {
     throw new MockApiError(404, 'Utilisateur introuvable.');
   }
   const payload = ctx.body as UpdateProfileRequest;
-  Object.assign(user, payload);
-  if (payload.avatarUrl === '') {
-    delete user.avatarUrl;
+  if (payload.organization !== undefined) {
+    const organization = payload.organization?.trim() ?? '';
+    if (!organization) {
+      if (user.role === 'ORGANIZER') {
+        throw new MockApiError(400, 'Organization is required for organizers', 'ORGANIZATION_REQUIRED');
+      }
+      user.organization = undefined;
+    } else {
+      user.organization = organization;
+    }
+  }
+  if (payload.firstName !== undefined) user.firstName = payload.firstName;
+  if (payload.lastName !== undefined) user.lastName = payload.lastName;
+  if (payload.phone !== undefined) user.phone = payload.phone;
+  if (payload.avatarUrl !== undefined) {
+    if (payload.avatarUrl === '') {
+      delete user.avatarUrl;
+    } else {
+      user.avatarUrl = payload.avatarUrl;
+    }
   }
   return { ...user };
 }
@@ -673,7 +804,7 @@ function handleCreateEvent(ctx: RouteContext): Event {
     description: payload.description,
     shortDescription: payload.shortDescription,
     coverImageUrl: payload.coverImageUrl ?? DEFAULT_COVER_IMAGE,
-    status: 'BROUILLON',
+    status: payload.status === 'PUBLIE' ? 'PUBLIE' : 'BROUILLON',
     categoryId: payload.categoryId,
     venueId: payload.venueId,
     organizerId: user.id,
@@ -720,6 +851,35 @@ function handleDeleteEvent(ctx: RouteContext): null {
     throw new MockApiError(404, 'Événement introuvable.');
   }
   requireEventOwnerOrAdmin(ctx.currentUser, event);
+  const eventId = event.id;
+  const registrationIds = new Set(
+    mockRegistrations.filter((registration) => registration.eventId === eventId).map((r) => r.id)
+  );
+  for (let i = mockRefunds.length - 1; i >= 0; i--) {
+    if (mockRefunds[i].eventId === eventId || registrationIds.has(mockRefunds[i].registrationId)) {
+      mockRefunds.splice(i, 1);
+    }
+  }
+  for (let i = mockPaymentIntents.length - 1; i >= 0; i--) {
+    if (registrationIds.has(mockPaymentIntents[i].registrationId)) {
+      mockPaymentIntents.splice(i, 1);
+    }
+  }
+  for (let i = mockTickets.length - 1; i >= 0; i--) {
+    if (mockTickets[i].eventId === eventId || registrationIds.has(mockTickets[i].registrationId)) {
+      mockTickets.splice(i, 1);
+    }
+  }
+  for (let i = mockRegistrations.length - 1; i >= 0; i--) {
+    if (mockRegistrations[i].eventId === eventId) {
+      mockRegistrations.splice(i, 1);
+    }
+  }
+  for (let i = mockTicketTypes.length - 1; i >= 0; i--) {
+    if (mockTicketTypes[i].eventId === eventId) {
+      mockTicketTypes.splice(i, 1);
+    }
+  }
   mockEvents.splice(mockEvents.indexOf(event), 1);
   return null;
 }
@@ -796,7 +956,7 @@ function handleGetCategory(ctx: RouteContext): Category {
 }
 
 function handleCreateCategory(ctx: RouteContext): Category {
-  requireRole(ctx.currentUser, ['ADMIN']);
+  requireRole(ctx.currentUser, ['ADMIN', 'ORGANIZER']);
   const payload = ctx.body as CreateCategoryRequest;
   const category: Category = { ...payload, id: generateId('cat'), eventCount: 0 };
   mockCategories.push(category);
@@ -804,7 +964,7 @@ function handleCreateCategory(ctx: RouteContext): Category {
 }
 
 function handleUpdateCategory(ctx: RouteContext): Category {
-  requireRole(ctx.currentUser, ['ADMIN']);
+  requireRole(ctx.currentUser, ['ADMIN', 'ORGANIZER']);
   const category = findCategoryById(ctx.params['id']);
   if (!category) {
     throw new MockApiError(404, 'Catégorie introuvable.');
@@ -814,7 +974,7 @@ function handleUpdateCategory(ctx: RouteContext): Category {
 }
 
 function handleDeleteCategory(ctx: RouteContext): null {
-  requireRole(ctx.currentUser, ['ADMIN']);
+  requireRole(ctx.currentUser, ['ADMIN', 'ORGANIZER']);
   const index = mockCategories.findIndex((category) => category.id === ctx.params['id']);
   if (index === -1) {
     throw new MockApiError(404, 'Catégorie introuvable.');
@@ -859,13 +1019,135 @@ function handleUpdateVenue(ctx: RouteContext): Venue {
 }
 
 function handleDeleteVenue(ctx: RouteContext): null {
-  requireRole(ctx.currentUser, ['ADMIN']);
+  requireRole(ctx.currentUser, ['ADMIN', 'ORGANIZER']);
   const index = mockVenues.findIndex((venue) => venue.id === ctx.params['id']);
   if (index === -1) {
     throw new MockApiError(404, 'Lieu introuvable.');
   }
   mockVenues.splice(index, 1);
   return null;
+}
+
+/* -------------------------------------------------------------------------- */
+/* PUBLIC REGISTRATION                                                        */
+/* -------------------------------------------------------------------------- */
+
+function findEventByPublicToken(token: string): Event | undefined {
+  return mockEvents.find(
+    (event) => event.publicRegistrationEnabled && event.publicRegistrationToken === token
+  );
+}
+
+function handleEnablePublicRegistration(ctx: RouteContext): Event {
+  const event = findEventById(ctx.params['id']);
+  if (!event) {
+    throw new MockApiError(404, 'Événement introuvable.');
+  }
+  requireEventOwnerOrAdmin(ctx.currentUser, event);
+  event.publicRegistrationEnabled = true;
+  event.publicRegistrationToken = event.publicRegistrationToken ?? generateId('pub-reg');
+  event.updatedAt = new Date().toISOString();
+  return event;
+}
+
+function handleRevokePublicRegistration(ctx: RouteContext): Event {
+  const event = findEventById(ctx.params['id']);
+  if (!event) {
+    throw new MockApiError(404, 'Événement introuvable.');
+  }
+  requireEventOwnerOrAdmin(ctx.currentUser, event);
+  event.publicRegistrationEnabled = false;
+  event.publicRegistrationToken = null;
+  event.updatedAt = new Date().toISOString();
+  return event;
+}
+
+function handleGetPublicRegistrationInfo(ctx: RouteContext) {
+  const event = findEventByPublicToken(ctx.params['token']);
+  if (!event) {
+    throw new MockApiError(404, "Lien d'inscription invalide ou expiré.");
+  }
+  return {
+    eventId: event.id,
+    eventTitle: event.title,
+    eventSlug: event.slug,
+    shortDescription: event.shortDescription,
+    startAt: event.startAt,
+    endAt: event.endAt,
+    city: event.city,
+    isFree: event.isFree,
+    ticketTypes: mockTicketTypes.filter((ticketType) => ticketType.eventId === event.id)
+  };
+}
+
+function handlePublicRegister(ctx: RouteContext): Registration {
+  const event = findEventByPublicToken(ctx.params['token']);
+  if (!event) {
+    throw new MockApiError(404, "Lien d'inscription invalide ou expiré.");
+  }
+  const payload = ctx.body as {
+    participantFirstName: string;
+    participantLastName: string;
+    participantEmail: string;
+    participantPhone?: string;
+    ticketTypeId?: string;
+    quantity?: number;
+  };
+  if (!payload.participantFirstName?.trim() || !payload.participantLastName?.trim() || !payload.participantEmail?.trim()) {
+    throw new MockApiError(400, 'Les informations du participant sont requises.', 'VALIDATION_ERROR');
+  }
+
+  const eventTicketTypes = mockTicketTypes.filter((ticketType) => ticketType.eventId === event.id);
+  const ticketType =
+    (payload.ticketTypeId ? findTicketTypeById(payload.ticketTypeId) : undefined) ?? eventTicketTypes[0];
+  if (!ticketType || ticketType.eventId !== event.id) {
+    throw new MockApiError(404, 'Type de billet introuvable.');
+  }
+
+  const quantity = payload.quantity && payload.quantity > 0 ? payload.quantity : 1;
+  const available = ticketType.quantityTotal - ticketType.quantitySold;
+  if (quantity > available) {
+    throw new MockApiError(409, 'Places insuffisantes pour ce type de billet.', 'SOLD_OUT');
+  }
+
+  const email = payload.participantEmail.trim().toLowerCase();
+  const alreadyRegistered = mockRegistrations.some(
+    (registration) =>
+      registration.eventId === event.id &&
+      registration.participantEmail.toLowerCase() === email &&
+      registration.status !== 'CANCELLED' &&
+      registration.status !== 'REFUNDED'
+  );
+  if (alreadyRegistered) {
+    throw new MockApiError(
+      409,
+      'Vous êtes déjà inscrit à cet événement avec cet email.',
+      'ALREADY_REGISTERED'
+    );
+  }
+
+  const now = new Date().toISOString();
+  const registration: Registration = {
+    id: generateId('reg'),
+    eventId: event.id,
+    participantFirstName: payload.participantFirstName.trim(),
+    participantLastName: payload.participantLastName.trim(),
+    participantEmail: email,
+    participantPhone: payload.participantPhone?.trim() || undefined,
+    ticketTypeId: ticketType.id,
+    status: event.isFree ? 'CONFIRMED' : 'PENDING',
+    quantity,
+    totalPrice: ticketType.price * quantity,
+    currency: ticketType.currency,
+    createdAt: now,
+    updatedAt: now
+  };
+  mockRegistrations.push(registration);
+  ticketType.quantitySold += quantity;
+  if (registration.status === 'CONFIRMED') {
+    createTicketsForRegistration(registration);
+  }
+  return registration;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -877,15 +1159,15 @@ function handleSearchRegistrations(ctx: RouteContext): PageResponse<Registration
   const page = queryNumber(ctx.query, 'page', 0);
   const size = queryNumber(ctx.query, 'size', 20);
   const eventId = ctx.query.get('eventId');
-  const userId = ctx.query.get('userId');
+  const participantEmail = ctx.query.get('participantEmail');
   const status = ctx.query.get('status') as RegistrationStatus | null;
 
   let results = [...mockRegistrations];
   if (eventId) {
     results = results.filter((registration) => registration.eventId === eventId);
   }
-  if (userId) {
-    results = results.filter((registration) => registration.userId === userId);
+  if (participantEmail) {
+    results = results.filter((registration) => registration.participantEmail === participantEmail);
   }
   if (status) {
     results = results.filter((registration) => registration.status === status);
@@ -895,30 +1177,24 @@ function handleSearchRegistrations(ctx: RouteContext): PageResponse<Registration
 }
 
 function handleGetRegistration(ctx: RouteContext): Registration {
+  requireRole(ctx.currentUser, ['ORGANIZER', 'ADMIN']);
   const registration = findRegistrationById(ctx.params['id']);
   if (!registration) {
     throw new MockApiError(404, 'Inscription introuvable.');
   }
-  const user = requireAuth(ctx.currentUser);
-  if (user.role === 'PARTICIPANT' && registration.userId !== user.id) {
-    throw new MockApiError(403, 'Accès refusé.');
-  }
   return registration;
 }
 
-function handleGetMyRegistrations(ctx: RouteContext): Registration[] {
-  const user = requireAuth(ctx.currentUser);
-  return mockRegistrations
-    .filter((registration) => registration.userId === user.id)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-}
-
 function handleCreateRegistration(ctx: RouteContext): Registration {
-  const user = requireAuth(ctx.currentUser);
+  requireRole(ctx.currentUser, ['ORGANIZER', 'ADMIN']);
   const payload = ctx.body as CreateRegistrationRequest;
   const event = findEventById(payload.eventId);
   if (!event) {
     throw new MockApiError(404, 'Événement introuvable.');
+  }
+  requireEventOwnerOrAdmin(ctx.currentUser, event);
+  if (!payload.participantFirstName?.trim() || !payload.participantLastName?.trim() || !payload.participantEmail?.trim()) {
+    throw new MockApiError(400, 'Les informations du participant sont requises.', 'VALIDATION_ERROR');
   }
   const ticketType = findTicketTypeById(payload.ticketTypeId);
   if (!ticketType) {
@@ -933,9 +1209,12 @@ function handleCreateRegistration(ctx: RouteContext): Registration {
   const registration: Registration = {
     id: generateId('reg'),
     eventId: event.id,
-    userId: user.id,
+    participantFirstName: payload.participantFirstName.trim(),
+    participantLastName: payload.participantLastName.trim(),
+    participantEmail: payload.participantEmail.trim(),
+    participantPhone: payload.participantPhone?.trim() || undefined,
     ticketTypeId: ticketType.id,
-    status: event.isFree ? 'CONFIRMED' : 'PENDING',
+    status: 'CONFIRMED',
     quantity: payload.quantity,
     totalPrice: ticketType.price * payload.quantity,
     currency: ticketType.currency,
@@ -944,27 +1223,24 @@ function handleCreateRegistration(ctx: RouteContext): Registration {
   };
   mockRegistrations.push(registration);
   ticketType.quantitySold += payload.quantity;
-  if (registration.status === 'CONFIRMED') {
-    createTicketsForRegistration(registration);
-  }
+  createTicketsForRegistration(registration);
   return registration;
 }
 
 function handleCancelRegistration(ctx: RouteContext): Registration {
-  const user = requireAuth(ctx.currentUser);
+  requireRole(ctx.currentUser, ['ORGANIZER', 'ADMIN']);
   const registration = findRegistrationById(ctx.params['id']);
   if (!registration) {
     throw new MockApiError(404, 'Inscription introuvable.');
-  }
-  if (user.role === 'PARTICIPANT' && registration.userId !== user.id) {
-    throw new MockApiError(403, 'Accès refusé.');
   }
   registration.status = 'CANCELLED';
   registration.updatedAt = new Date().toISOString();
   mockTickets
     .filter((ticket) => ticket.registrationId === registration.id)
     .forEach((ticket) => {
-      ticket.status = 'CANCELLED';
+      if (ticket.status === 'VALID' || ticket.status === 'EXPIRED') {
+        ticket.status = 'CANCELLED';
+      }
     });
   return registration;
 }
@@ -981,6 +1257,16 @@ function handleCheckInRegistration(ctx: RouteContext): Registration {
   return registration;
 }
 
+function handleDeleteRegistration(ctx: RouteContext): null {
+  requireRole(ctx.currentUser, ['ORGANIZER', 'ADMIN']);
+  const index = mockRegistrations.findIndex((r) => r.id === ctx.params['id']);
+  if (index === -1) {
+    throw new MockApiError(404, 'Inscription introuvable.');
+  }
+  mockRegistrations.splice(index, 1);
+  return null;
+}
+
 function handleUpdateRegistrationStatus(ctx: RouteContext): Registration {
   requireRole(ctx.currentUser, ['ORGANIZER', 'ADMIN']);
   const registration = findRegistrationById(ctx.params['id']);
@@ -989,7 +1275,86 @@ function handleUpdateRegistrationStatus(ctx: RouteContext): Registration {
   }
   registration.status = (ctx.body as { status: RegistrationStatus }).status;
   registration.updatedAt = new Date().toISOString();
+  if (registration.status === 'CANCELLED') {
+    mockTickets
+      .filter((ticket) => ticket.registrationId === registration.id)
+      .forEach((ticket) => {
+        if (ticket.status === 'VALID' || ticket.status === 'EXPIRED') {
+          ticket.status = 'CANCELLED';
+        }
+      });
+  }
   return registration;
+}
+
+function handleChangeRegistrationTicketType(ctx: RouteContext): Registration {
+  requireRole(ctx.currentUser, ['ORGANIZER', 'ADMIN']);
+  const registration = findRegistrationById(ctx.params['id']);
+  if (!registration) {
+    throw new MockApiError(404, 'Inscription introuvable.');
+  }
+  const ticketTypeId = (ctx.body as { ticketTypeId?: string }).ticketTypeId;
+  const ticketType = ticketTypeId ? findTicketTypeById(ticketTypeId) : undefined;
+  if (!ticketType || ticketType.eventId !== registration.eventId) {
+    throw new MockApiError(400, 'Type de billet invalide.', 'VALIDATION_ERROR');
+  }
+  registration.ticketTypeId = ticketType.id;
+  registration.totalPrice = ticketType.price * registration.quantity;
+  registration.currency = ticketType.currency;
+  registration.updatedAt = new Date().toISOString();
+  return registration;
+}
+
+function handleSendRegistrationTicket(ctx: RouteContext): { sent: number; skipped: number; message: string } {
+  requireRole(ctx.currentUser, ['ORGANIZER', 'ADMIN']);
+  const registration = findRegistrationById(ctx.params['id']);
+  if (!registration) {
+    throw new MockApiError(404, 'Inscription introuvable.');
+  }
+  if (registration.status === 'CANCELLED' || registration.status === 'REFUNDED') {
+    throw new MockApiError(400, 'Inscription non éligible.', 'INVALID_STATUS');
+  }
+  const hasValid = mockTickets.some(
+    (ticket) => ticket.registrationId === registration.id && ticket.status === 'VALID'
+  );
+  if (!hasValid) {
+    throw new MockApiError(400, 'Aucun billet valide à envoyer.', 'NO_TICKETS');
+  }
+  return {
+    sent: 1,
+    skipped: 0,
+    message: `Billet(s) envoyé(s) à ${registration.participantEmail}`
+  };
+}
+
+function handleSendEventTickets(ctx: RouteContext): { sent: number; skipped: number; message: string } {
+  requireRole(ctx.currentUser, ['ORGANIZER', 'ADMIN']);
+  const event = findEventById(ctx.params['id']);
+  if (!event) {
+    throw new MockApiError(404, 'Événement introuvable.');
+  }
+  const regs = mockRegistrations.filter((r) => r.eventId === event.id);
+  let sent = 0;
+  let skipped = 0;
+  for (const registration of regs) {
+    if (
+      registration.status === 'CANCELLED' ||
+      registration.status === 'REFUNDED' ||
+      registration.status === 'PENDING'
+    ) {
+      skipped++;
+      continue;
+    }
+    const hasValid = mockTickets.some(
+      (ticket) => ticket.registrationId === registration.id && ticket.status === 'VALID'
+    );
+    if (!hasValid) {
+      skipped++;
+      continue;
+    }
+    sent++;
+  }
+  return { sent, skipped, message: `${sent} email(s) envoyé(s), ${skipped} ignoré(s)` };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1026,34 +1391,38 @@ function handleDeleteTicketType(ctx: RouteContext): null {
   return null;
 }
 
-function handleGetMyTickets(ctx: RouteContext): Ticket[] {
-  const user = requireAuth(ctx.currentUser);
-  return mockTickets
-    .filter((ticket) => ticket.ownerUserId === user.id)
-    .sort((a, b) => b.issuedAt.localeCompare(a.issuedAt));
-}
-
 function handleGetTicket(ctx: RouteContext): Ticket {
+  requireRole(ctx.currentUser, ['ORGANIZER', 'ADMIN']);
   const ticket = findTicketById(ctx.params['id']);
   if (!ticket) {
     throw new MockApiError(404, 'Billet introuvable.');
-  }
-  const user = requireAuth(ctx.currentUser);
-  if (user.role === 'PARTICIPANT' && ticket.ownerUserId !== user.id) {
-    throw new MockApiError(403, 'Accès refusé.');
   }
   return ticket;
 }
 
 function handleValidateTicket(ctx: RouteContext): Ticket {
   requireRole(ctx.currentUser, ['ORGANIZER', 'ADMIN']);
-  const payload = ctx.body as { qrCode: string };
-  const ticket = findTicketByQrCode(payload.qrCode);
+  const payload = ctx.body as { qrCode: string; eventId: string };
+  if (!payload.eventId) {
+    throw new MockApiError(400, "L'identifiant d'événement est requis.", 'EVENT_REQUIRED');
+  }
+  const qrCode = extractMockQrCode(payload.qrCode);
+  const ticket = findTicketByQrCode(qrCode);
   if (!ticket) {
     throw new MockApiError(404, 'Billet invalide ou introuvable.', 'INVALID_TICKET');
   }
+  if (ticket.eventId !== payload.eventId) {
+    throw new MockApiError(400, "Ce billet n'appartient pas à cet événement.", 'WRONG_EVENT');
+  }
+  expireMockTicketIfNeeded(ticket);
   if (ticket.status === 'USED') {
     throw new MockApiError(409, 'Ce billet a déjà été scanné.', 'ALREADY_SCANNED');
+  }
+  if (ticket.status === 'EXPIRED') {
+    throw new MockApiError(400, 'Ce billet a expiré.', 'TICKET_EXPIRED');
+  }
+  if (ticket.status === 'CANCELLED') {
+    throw new MockApiError(400, 'Ce billet a été annulé.', 'TICKET_CANCELLED');
   }
   if (ticket.status !== 'VALID') {
     throw new MockApiError(400, `Ce billet n'est pas valide (statut : ${ticket.status}).`, 'INVALID_TICKET');
@@ -1061,6 +1430,125 @@ function handleValidateTicket(ctx: RouteContext): Ticket {
   ticket.status = 'USED';
   ticket.usedAt = new Date().toISOString();
   return ticket;
+}
+
+function extractMockQrCode(raw: string): string {
+  const trimmed = (raw ?? '').trim();
+  if (!/^https?:\/\//i.test(trimmed)) return trimmed;
+  try {
+    return new URL(trimmed).searchParams.get('qr')?.trim() || trimmed;
+  } catch {
+    return trimmed;
+  }
+}
+
+function expireMockTicketIfNeeded(ticket: Ticket): void {
+  if (ticket.status !== 'VALID') return;
+  const event = findEventById(ticket.eventId);
+  if (event && Date.now() > new Date(event.endAt).getTime()) {
+    ticket.status = 'EXPIRED';
+  }
+}
+
+function handleTicketInfo(ctx: RouteContext): Record<string, unknown> {
+  const rawQr = ctx.query.get('qrCode') ?? '';
+  const eventId = ctx.query.get('eventId') || '';
+  if (!eventId) {
+    throw new MockApiError(400, "L'identifiant d'événement est requis.", 'EVENT_REQUIRED');
+  }
+  const qrCode = extractMockQrCode(rawQr);
+  const ticket = findTicketByQrCode(qrCode);
+  if (!ticket) {
+    throw new MockApiError(400, 'Billet invalide ou introuvable.', 'INVALID_TICKET');
+  }
+  if (ticket.eventId !== eventId) {
+    throw new MockApiError(400, "Ce billet n'appartient pas à cet événement.", 'WRONG_EVENT');
+  }
+  expireMockTicketIfNeeded(ticket);
+  const event = findEventById(ticket.eventId);
+  const ticketType = findTicketTypeById(ticket.ticketTypeId);
+  const isOrganizer =
+    ctx.currentUser &&
+    (ctx.currentUser.role === 'ORGANIZER' || ctx.currentUser.role === 'ADMIN');
+
+  if (isOrganizer) {
+    return {
+      mode: 'ORGANIZER_VIEW',
+      eventId: ticket.eventId,
+      eventTitle: event?.title ?? 'Événement',
+      city: event?.city,
+      ticketId: ticket.id,
+      participantFirstName: ticket.participantFirstName,
+      participantLastName: ticket.participantLastName,
+      participantEmail: ticket.participantEmail,
+      ticketTypeName: ticketType?.name,
+      status: ticket.status,
+      issuedAt: ticket.issuedAt,
+      usedAt: ticket.usedAt ?? null,
+      eventStartAt: event?.startAt,
+      eventEndAt: event?.endAt,
+      canValidate: ticket.status === 'VALID',
+      message:
+        ticket.status === 'VALID'
+          ? 'Billet valide — prêt à être scanné à l\'entrée.'
+          : ticket.status === 'USED'
+            ? 'Billet déjà scanné.'
+            : ticket.status === 'EXPIRED'
+              ? 'Billet expiré — entrée refusée.'
+              : ticket.status === 'CANCELLED'
+                ? 'Billet annulé — entrée refusée.'
+                : 'Billet non valide.'
+    };
+  }
+
+  const email = ticket.participantEmail;
+  const masked =
+    email && email.includes('@')
+      ? `${email[0]}***@${email.split('@')[1]}`
+      : email;
+
+  return {
+    mode: 'PARTICIPANT_VIEW',
+    eventId: ticket.eventId,
+    eventTitle: event?.title ?? 'Événement',
+    city: event?.city,
+    ticketId: ticket.id,
+    participantFirstName: ticket.participantFirstName,
+    participantLastName: ticket.participantLastName,
+    participantEmail: masked,
+    ticketTypeName: ticketType?.name,
+    status: ticket.status,
+    issuedAt: ticket.issuedAt,
+    usedAt: null,
+    eventStartAt: event?.startAt,
+    eventEndAt: event?.endAt,
+    canValidate: false,
+    message:
+      ticket.status === 'VALID'
+        ? "Votre billet est valide. Présentez-le à l'entrée."
+        : ticket.status === 'USED'
+          ? 'Ce billet a déjà été utilisé pour entrer.'
+          : ticket.status === 'EXPIRED'
+            ? 'Ce billet a expiré.'
+            : ticket.status === 'CANCELLED'
+              ? 'Ce billet a été annulé.'
+              : 'Ce billet n\'est pas valide.'
+  };
+}
+
+function handleEventScanStats(ctx: RouteContext): { eventId: string; scanned: number; issued: number; capacity: number } {
+  requireRole(ctx.currentUser, ['ORGANIZER', 'ADMIN']);
+  const event = findEventById(ctx.params['id']);
+  if (!event) {
+    throw new MockApiError(404, 'Événement introuvable.');
+  }
+  const eventTickets = mockTickets.filter((ticket) => ticket.eventId === event.id);
+  return {
+    eventId: event.id,
+    scanned: eventTickets.filter((ticket) => ticket.status === 'USED').length,
+    issued: eventTickets.length,
+    capacity: event.capacity
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1115,19 +1603,22 @@ function handleConfirmPaymentIntent(ctx: RouteContext): PaymentIntent {
 /* -------------------------------------------------------------------------- */
 
 function handleCreateRefund(ctx: RouteContext): RefundRequest {
-  const user = requireAuth(ctx.currentUser);
+  const user = requireRole(ctx.currentUser, ['ORGANIZER']);
   const payload = ctx.body as CreateRefundRequest;
   const registration = findRegistrationById(payload.registrationId);
   if (!registration) {
     throw new MockApiError(404, 'Inscription introuvable.');
   }
-  if (registration.userId !== user.id) {
-    throw new MockApiError(403, 'Accès refusé.');
+  const event = findEventById(registration.eventId);
+  if (!event || event.organizerId !== user.id) {
+    throw new MockApiError(403, 'Accès refusé à cet événement.');
   }
   const refund: RefundRequest = {
     id: generateId('rfd'),
     registrationId: registration.id,
-    userId: user.id,
+    participantFirstName: registration.participantFirstName,
+    participantLastName: registration.participantLastName,
+    participantEmail: registration.participantEmail,
     eventId: registration.eventId,
     amount: registration.totalPrice,
     currency: registration.currency,
@@ -1139,27 +1630,17 @@ function handleCreateRefund(ctx: RouteContext): RefundRequest {
   return refund;
 }
 
-function handleGetMyRefunds(ctx: RouteContext): RefundRequest[] {
-  const user = requireAuth(ctx.currentUser);
-  return mockRefunds
-    .filter((refund) => refund.userId === user.id)
-    .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
-}
-
 function handleSearchRefunds(ctx: RouteContext): PageResponse<RefundRequest> {
-  const user = requireRole(ctx.currentUser, ['ADMIN', 'ORGANIZER']);
+  const user = requireRole(ctx.currentUser, ['ORGANIZER']);
   const page = queryNumber(ctx.query, 'page', 0);
   const size = queryNumber(ctx.query, 'size', 20);
   const status = ctx.query.get('status') as RefundStatus | null;
   const eventId = ctx.query.get('eventId');
 
-  let results = [...mockRefunds];
-  if (user.role === 'ORGANIZER') {
-    const organizerEventIds = new Set(
-      mockEvents.filter((event) => event.organizerId === user.id).map((event) => event.id)
-    );
-    results = results.filter((refund) => organizerEventIds.has(refund.eventId));
-  }
+  const organizerEventIds = new Set(
+    mockEvents.filter((event) => event.organizerId === user.id).map((event) => event.id)
+  );
+  let results = mockRefunds.filter((refund) => organizerEventIds.has(refund.eventId));
   if (status) {
     results = results.filter((refund) => refund.status === status);
   }
@@ -1171,10 +1652,14 @@ function handleSearchRefunds(ctx: RouteContext): PageResponse<RefundRequest> {
 }
 
 function handleApproveRefund(ctx: RouteContext): RefundRequest {
-  requireRole(ctx.currentUser, ['ADMIN']);
+  const user = requireRole(ctx.currentUser, ['ORGANIZER']);
   const refund = findRefundById(ctx.params['id']);
   if (!refund) {
     throw new MockApiError(404, 'Demande de remboursement introuvable.');
+  }
+  const event = findEventById(refund.eventId);
+  if (!event || event.organizerId !== user.id) {
+    throw new MockApiError(403, 'Accès refusé à cet événement.');
   }
   refund.status = 'APPROVED';
   refund.processedAt = new Date().toISOString();
@@ -1188,10 +1673,14 @@ function handleApproveRefund(ctx: RouteContext): RefundRequest {
 }
 
 function handleRejectRefund(ctx: RouteContext): RefundRequest {
-  requireRole(ctx.currentUser, ['ADMIN']);
+  const user = requireRole(ctx.currentUser, ['ORGANIZER']);
   const refund = findRefundById(ctx.params['id']);
   if (!refund) {
     throw new MockApiError(404, 'Demande de remboursement introuvable.');
+  }
+  const event = findEventById(refund.eventId);
+  if (!event || event.organizerId !== user.id) {
+    throw new MockApiError(403, 'Accès refusé à cet événement.');
   }
   refund.status = 'REJECTED';
   refund.processedAt = new Date().toISOString();
@@ -1310,6 +1799,11 @@ const routes: MockRoute[] = [
   { method: 'POST', pattern: '/auth/login', handler: handleLogin },
   { method: 'POST', pattern: '/auth/register', status: 201, handler: handleRegister },
   { method: 'POST', pattern: '/auth/google', handler: handleGoogleAuth },
+  { method: 'POST', pattern: '/auth/2fa/verify', handler: handleTotpVerify },
+  { method: 'POST', pattern: '/auth/2fa/setup', handler: handleTotpSetup },
+  { method: 'POST', pattern: '/auth/2fa/enable', handler: handleTotpEnable },
+  { method: 'POST', pattern: '/auth/2fa/disable', handler: handleTotpDisable },
+  { method: 'GET', pattern: '/auth/2fa/status', handler: handleTotpStatus },
   { method: 'POST', pattern: '/auth/logout', handler: handleLogout },
   { method: 'GET', pattern: '/auth/me', handler: handleMe },
   { method: 'POST', pattern: '/auth/refresh', handler: handleRefresh },
@@ -1330,7 +1824,11 @@ const routes: MockRoute[] = [
   { method: 'GET', pattern: '/events/organizer/:organizerId', handler: handleEventsByOrganizer },
   { method: 'GET', pattern: '/events/:id/ticket-types', handler: handleGetTicketTypesByEvent },
   { method: 'POST', pattern: '/events/:id/ticket-types', status: 201, handler: handleCreateTicketType },
+  { method: 'GET', pattern: '/events/:id/scan-stats', handler: handleEventScanStats },
+  { method: 'POST', pattern: '/events/:id/send-tickets', handler: handleSendEventTickets },
   { method: 'POST', pattern: '/events/:id/duplicate', status: 201, handler: handleDuplicateEvent },
+  { method: 'POST', pattern: '/events/:id/public-registration', handler: handleEnablePublicRegistration },
+  { method: 'DELETE', pattern: '/events/:id/public-registration', handler: handleRevokePublicRegistration },
   { method: 'PATCH', pattern: '/events/:id/status', handler: handleUpdateEventStatus },
   { method: 'GET', pattern: '/events', handler: handleSearchEvents },
   { method: 'POST', pattern: '/events', status: 201, handler: handleCreateEvent },
@@ -1352,17 +1850,23 @@ const routes: MockRoute[] = [
   { method: 'PATCH', pattern: '/venues/:id', handler: handleUpdateVenue },
   { method: 'DELETE', pattern: '/venues/:id', handler: handleDeleteVenue },
 
+  // PUBLIC REGISTRATION
+  { method: 'GET', pattern: '/public/registrations/:token', handler: handleGetPublicRegistrationInfo },
+  { method: 'POST', pattern: '/public/registrations/:token', status: 201, handler: handlePublicRegister },
+
   // REGISTRATIONS
-  { method: 'GET', pattern: '/registrations/me', handler: handleGetMyRegistrations },
+  { method: 'DELETE', pattern: '/registrations/:id', handler: handleDeleteRegistration },
   { method: 'PATCH', pattern: '/registrations/:id/cancel', handler: handleCancelRegistration },
   { method: 'PATCH', pattern: '/registrations/:id/check-in', handler: handleCheckInRegistration },
   { method: 'PATCH', pattern: '/registrations/:id/status', handler: handleUpdateRegistrationStatus },
+  { method: 'PATCH', pattern: '/registrations/:id/ticket-type', handler: handleChangeRegistrationTicketType },
+  { method: 'POST', pattern: '/registrations/:id/send-ticket', handler: handleSendRegistrationTicket },
   { method: 'GET', pattern: '/registrations', handler: handleSearchRegistrations },
   { method: 'POST', pattern: '/registrations', status: 201, handler: handleCreateRegistration },
   { method: 'GET', pattern: '/registrations/:id', handler: handleGetRegistration },
 
   // TICKETS
-  { method: 'GET', pattern: '/tickets/me', handler: handleGetMyTickets },
+  { method: 'GET', pattern: '/tickets/info', handler: handleTicketInfo },
   { method: 'POST', pattern: '/tickets/validate', handler: handleValidateTicket },
   { method: 'PATCH', pattern: '/tickets/types/:id', handler: handleUpdateTicketType },
   { method: 'DELETE', pattern: '/tickets/types/:id', handler: handleDeleteTicketType },
@@ -1374,7 +1878,6 @@ const routes: MockRoute[] = [
   { method: 'POST', pattern: '/payments/intents/:id/confirm', handler: handleConfirmPaymentIntent },
 
   // REFUNDS
-  { method: 'GET', pattern: '/refunds/me', handler: handleGetMyRefunds },
   { method: 'PATCH', pattern: '/refunds/:id/approve', handler: handleApproveRefund },
   { method: 'PATCH', pattern: '/refunds/:id/reject', handler: handleRejectRefund },
   { method: 'GET', pattern: '/refunds', handler: handleSearchRefunds },

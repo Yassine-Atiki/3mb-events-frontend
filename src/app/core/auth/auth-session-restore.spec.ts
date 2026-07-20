@@ -133,7 +133,7 @@ describe('Auth session restore on reload', () => {
     TestBed.inject(AuthStore);
     const http = TestBed.inject(HttpTestingController);
 
-    const guardResultPromise = runGuard(injector, '/app/tableau-de-bord');
+    const guardResultPromise = runGuard(injector, '/organisateur/tableau-de-bord');
 
     http.expectOne(`${environment.apiUrl}/auth/me`).flush(
       { message: 'Unauthorized' },

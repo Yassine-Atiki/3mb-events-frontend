@@ -1,8 +1,9 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { finalize } from 'rxjs';
+import { finalize, map, startWith } from 'rxjs';
 
 import { AuthService } from '../../core/api/auth.service';
 import { AuthSessionService } from '../../core/auth/auth-session.service';
@@ -13,20 +14,31 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 import { passwordsMatchValidator } from '../../shared/utils/validators';
 
 @Component({
-  selector: 'app-register-participant-page',
+  selector: 'app-register-organization-page',
   standalone: true,
   imports: [ReactiveFormsModule, RouterLink, ButtonComponent, InputComponent, GoogleAuthButtonComponent],
   template: `
     <div class="mb-7 text-center">
-      <span class="page-header-badge">Participant</span>
-      <h1 class="mt-3 text-2xl font-bold tracking-tight text-text-primary">Créer un compte participant</h1>
-      <p class="mt-2 text-sm text-text-secondary">Réservez vos places et gérez vos billets en quelques secondes.</p>
+      <span class="page-header-badge">Organisateur</span>
+      <h1 class="mt-3 text-2xl font-bold tracking-tight text-text-primary">Devenez organisateur</h1>
+      <p class="mt-2 text-sm text-text-secondary">Créez, publiez et gérez vos événements sur 3MB Events.</p>
     </div>
 
+    <app-ui-input
+      label="Organisation"
+      placeholder="Nom de votre entreprise ou association"
+      [formControl]="organizationControl"
+      [error]="organizationInvalid() ? 'Requis' : undefined"
+    />
+
     <app-google-auth-button
-      role="PARTICIPANT"
+      class="mt-4 block"
+      role="ORGANIZER"
+      [organization]="organizationValue()"
+      [disabled]="!organizationReady()"
+      disabledHint="Renseignez votre organisation pour activer Continuer avec Google."
       [showDivider]="false"
-      successMessage="Bienvenue sur 3MB Events !"
+      successMessage="Compte organisateur créé avec succès."
     />
 
     <div class="relative my-6">
@@ -49,7 +61,7 @@ import { passwordsMatchValidator } from '../../shared/utils/validators';
       </div>
 
       <app-ui-input
-        label="Adresse email"
+        label="Adresse email professionnelle"
         type="email"
         formControlName="email"
         [error]="invalid('email') ? 'Adresse email invalide.' : undefined"
@@ -79,28 +91,44 @@ import { passwordsMatchValidator } from '../../shared/utils/validators';
       </label>
 
       <div class="mt-2 flex justify-center">
-        <app-ui-button type="submit" [loading]="loading()">Créer mon compte</app-ui-button>
+        <app-ui-button type="submit" [loading]="loading()">Créer mon compte organisateur</app-ui-button>
       </div>
     </form>
 
     <p class="mt-6 text-center text-sm text-text-secondary">
       Déjà inscrit ?
       <a routerLink="/auth/connexion" class="font-semibold text-brand-teal-dark hover:underline">Se connecter</a>
-      <br />
-      Vous organisez des événements ?
-      <a routerLink="/auth/inscription/organisateur" class="font-semibold text-brand-teal-dark hover:underline">
-        Inscription organisateur
-      </a>
     </p>
   `
 })
-export class RegisterParticipantPage {
+export class RegisterOrganizationPage {
   private readonly fb = inject(FormBuilder);
   private readonly authService = inject(AuthService);
   private readonly authSession = inject(AuthSessionService);
   private readonly toast = inject(ToastService);
 
   protected readonly loading = signal(false);
+
+  /** Shared organization field — above Google button and mirrored into the form. */
+  protected readonly organizationControl = this.fb.nonNullable.control('', [
+    Validators.required,
+    Validators.minLength(2)
+  ]);
+
+  private readonly organizationRaw = toSignal(
+    this.organizationControl.valueChanges.pipe(
+      startWith(this.organizationControl.value),
+      map((v) => v ?? '')
+    ),
+    { initialValue: '' }
+  );
+
+  protected readonly organizationValue = computed(() => this.organizationRaw().trim());
+  protected readonly organizationReady = computed(() => this.organizationValue().length >= 2);
+
+  protected organizationInvalid(): boolean {
+    return this.organizationControl.invalid && this.organizationControl.touched;
+  }
 
   protected readonly form = this.fb.nonNullable.group(
     {
@@ -121,10 +149,12 @@ export class RegisterParticipantPage {
   }
 
   protected submit(): void {
+    this.organizationControl.markAsTouched();
     this.form.markAllAsTouched();
-    if (this.form.invalid || this.loading()) return;
+    if (this.organizationControl.invalid || this.form.invalid || this.loading()) return;
 
     const { firstName, lastName, email, phone, password } = this.form.getRawValue();
+    const organization = this.organizationValue();
     this.loading.set(true);
 
     this.authService
@@ -132,14 +162,15 @@ export class RegisterParticipantPage {
         firstName,
         lastName,
         email,
+        organization,
         phone: phone || undefined,
         password,
-        role: 'PARTICIPANT'
+        role: 'ORGANIZER'
       })
       .pipe(finalize(() => this.loading.set(false)))
       .subscribe({
         next: (response) => {
-          this.toast.success('Bienvenue sur 3MB Events !');
+          this.toast.success('Compte organisateur créé avec succès.');
           this.authSession.completeAuthSession(response, { preferQueryReturnUrl: false });
         },
         error: (error: HttpErrorResponse) => {

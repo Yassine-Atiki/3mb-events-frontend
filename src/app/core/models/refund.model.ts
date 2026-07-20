@@ -3,7 +3,6 @@ export type RefundStatus = 'REQUESTED' | 'APPROVED' | 'REJECTED' | 'PROCESSED';
 export interface RefundRequest {
   id: string;
   registrationId: string;
-  userId: string;
   eventId: string;
   amount: number;
   currency: string;
@@ -12,4 +11,7 @@ export interface RefundRequest {
   requestedAt: string;
   processedAt?: string;
   adminNote?: string;
+  participantFirstName: string;
+  participantLastName: string;
+  participantEmail: string;
 }

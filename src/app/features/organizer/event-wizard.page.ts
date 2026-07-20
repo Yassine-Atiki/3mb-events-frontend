@@ -1,17 +1,23 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, inject, input, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AbstractControl, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { LucideAngularModule, Plus, Sparkles, Trash2 } from 'lucide-angular';
-import { forkJoin, map, Observable, of } from 'rxjs';
+import { Download, FileSpreadsheet, LucideAngularModule, Plus, Sparkles, Trash2 } from 'lucide-angular';
+import { forkJoin, map, Observable, of, switchMap } from 'rxjs';
 
 import { CategoryService } from '../../core/api/category.service';
 import { CreateEventRequest, EventService, UpdateEventRequest } from '../../core/api/event.service';
+import { RegistrationService } from '../../core/api/registration.service';
 import { CreateTicketTypeRequest, TicketService } from '../../core/api/ticket.service';
 import { VenueService } from '../../core/api/venue.service';
-import { EventStatus, EventVisibility, TicketTypeKind, Venue } from '../../core/models';
+import { EventStatus, EventVisibility, TicketType, TicketTypeKind, Venue } from '../../core/models';
 import { EventCardPreviewComponent } from '../../shared/organizer/event-card-preview.component';
 import { eventFunctionalStatus } from '../../shared/organizer/functional-status';
+import {
+  downloadParticipantImportTemplate,
+  matchTicketTypeId,
+  parseParticipantSpreadsheet
+} from '../../shared/organizer/participant-import.util';
 import { StatusDotComponent } from '../../shared/organizer/status-dot.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
@@ -38,6 +44,16 @@ interface DraftTicketType {
   quantityTotal: number;
   maxPerOrder?: number;
   description?: string;
+}
+
+interface DraftParticipant {
+  tempId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  ticketTypeTempId: string;
+  quantity: number;
 }
 
 const VISIBILITY_OPTIONS: SelectOption[] = [
@@ -357,6 +373,86 @@ function fromDatetimeLocalValue(value: string): string {
             <div class="flex flex-col gap-5">
               <div>
                 <p class="organizer-panel-eyebrow">Étape 5</p>
+                <h2 class="organizer-panel-title">Participants</h2>
+                <p class="organizer-panel-subtitle">
+                  Ajoutez des invités maintenant (optionnel) — ils seront inscrits à la création de l'événement.
+                </p>
+              </div>
+
+              <form [formGroup]="participantForm" class="grid gap-3 sm:grid-cols-2">
+                <app-ui-input label="Prénom" formControlName="firstName" />
+                <app-ui-input label="Nom" formControlName="lastName" />
+                <app-ui-input label="Email" type="email" formControlName="email" />
+                <app-ui-input label="Téléphone" hint="Optionnel" formControlName="phone" />
+                <app-ui-select label="Type de billet" [options]="participantTicketOptions()" formControlName="ticketTypeTempId" />
+                <app-ui-input label="Quantité" type="number" formControlName="quantity" />
+                <div class="sm:col-span-2">
+                  <app-ui-button type="button" variant="secondary" (clicked)="addParticipant()">
+                    <lucide-angular [img]="icons.Plus" [size]="15"></lucide-angular>
+                    Ajouter ce participant
+                  </app-ui-button>
+                </div>
+                <div class="sm:col-span-2 flex flex-wrap gap-2">
+                  <app-ui-button type="button" variant="secondary" (clicked)="downloadImportTemplate()">
+                    <lucide-angular [img]="icons.Download" [size]="15"></lucide-angular>
+                    Modèle Excel
+                  </app-ui-button>
+                  <app-ui-button type="button" variant="secondary" (clicked)="openImportPicker()">
+                    <lucide-angular [img]="icons.FileSpreadsheet" [size]="15"></lucide-angular>
+                    Importer Excel / CSV
+                  </app-ui-button>
+                  <input
+                    #wizardImportInput
+                    type="file"
+                    class="sr-only"
+                    accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+                    (change)="onWizardImportFileSelected($event)"
+                  />
+                </div>
+              </form>
+
+              @if (importSummary()) {
+                <p class="rounded-xl border border-hairline bg-white px-3 py-2 text-xs text-text-secondary">
+                  {{ importSummary() }}
+                </p>
+              }
+              @if (participantsDraft().length === 0) {
+                <p class="text-sm text-text-secondary">Aucun participant pour l'instant — vous pourrez en ajouter après publication.</p>
+              } @else {
+                <ul class="flex flex-col gap-2">
+                  @for (guest of participantsDraft(); track guest.tempId) {
+                    <li class="organizer-wizard-ticket-item">
+                      <div class="min-w-0">
+                        <p class="text-sm font-semibold text-text-primary">
+                          {{ guest.firstName }} {{ guest.lastName }}
+                        </p>
+                        <p class="mt-0.5 text-xs text-text-secondary">
+                          {{ guest.email }}
+                          @if (guest.phone) {
+                            · {{ guest.phone }}
+                          }
+                          · {{ ticketDraftLabel(guest.ticketTypeTempId) }} × {{ guest.quantity }}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        class="rounded-lg border border-hairline p-2 text-text-secondary transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                        aria-label="Supprimer"
+                        (click)="removeParticipant(guest.tempId)"
+                      >
+                        <lucide-angular [img]="icons.Trash2" [size]="15"></lucide-angular>
+                      </button>
+                    </li>
+                  }
+                </ul>
+              }
+            </div>
+          }
+
+          @if (currentStep() === 5) {
+            <div class="flex flex-col gap-5">
+              <div>
+                <p class="organizer-panel-eyebrow">Étape 6</p>
                 <h2 class="organizer-panel-title">Récapitulatif &amp; publication</h2>
               </div>
 
@@ -386,18 +482,21 @@ function fromDatetimeLocalValue(value: string): string {
                     <p class="text-xs text-text-secondary">• {{ tt.name }} — {{ tt.price === 0 ? 'Gratuit' : tt.price + ' MAD' }}</p>
                   }
                 </div>
+                <div class="organizer-wizard-recap-card sm:col-span-2">
+                  <p class="text-xs font-semibold uppercase tracking-wide text-text-secondary">Participants</p>
+                  <p class="mt-2 text-xs text-text-secondary">
+                    {{ participantsDraft().length === 0 ? 'Aucun ajouté à la création' : participantsDraft().length + ' participant(s) à inscrire' }}
+                  </p>
+                </div>
               </div>
 
               <div class="organizer-wizard-publish">
                 <p class="text-sm text-text-secondary">
-                  Enregistrez en brouillon, soumettez pour révision ou publiez directement votre événement.
+                  Enregistrez en brouillon ou publiez directement votre événement.
                 </p>
                 <div class="organizer-wizard-publish-actions mt-4">
                   <app-ui-button type="button" variant="secondary" [loading]="saving()" (clicked)="saveAsDraft()">
                     Brouillon
-                  </app-ui-button>
-                  <app-ui-button type="button" variant="secondary" [loading]="saving()" (clicked)="submitForReview()">
-                    Révision
                   </app-ui-button>
                   <app-ui-button type="button" [loading]="saving()" (clicked)="publishNow()">Publier</app-ui-button>
                 </div>
@@ -436,13 +535,15 @@ export class EventWizardPage {
   private readonly fb = inject(FormBuilder);
   private readonly eventService = inject(EventService);
   private readonly ticketService = inject(TicketService);
+  private readonly registrationService = inject(RegistrationService);
   private readonly categoryService = inject(CategoryService);
   private readonly venueService = inject(VenueService);
   private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
   private readonly venueAutocomplete = viewChild(VenueAutocompleteComponent);
+  private readonly wizardImportInput = viewChild<ElementRef<HTMLInputElement>>('wizardImportInput');
 
-  protected readonly icons = { Plus, Trash2, Sparkles };
+  protected readonly icons = { Plus, Trash2, Sparkles, Download, FileSpreadsheet };
 
   protected readonly stepProgressPercent = computed(() =>
     Math.round(((this.currentStep() + 1) / this.steps.length) * 100)
@@ -453,6 +554,7 @@ export class EventWizardPage {
     { id: 'date-venue', label: 'Date & lieu', hint: 'Quand et où' },
     { id: 'capacity', label: 'Capacité', hint: 'Places et visibilité' },
     { id: 'tickets', label: 'Billetterie', hint: 'Types de billets' },
+    { id: 'participants', label: 'Participants', hint: 'Invités à inscrire (optionnel)' },
     { id: 'recap', label: 'Publication', hint: 'Valider et publier' }
   ];
 
@@ -467,6 +569,8 @@ export class EventWizardPage {
   protected readonly venues = signal<Venue[]>([]);
   protected readonly venueModalOpen = signal(false);
   protected readonly ticketTypesDraft = signal<DraftTicketType[]>([]);
+  protected readonly participantsDraft = signal<DraftParticipant[]>([]);
+  protected readonly importSummary = signal('');
   protected readonly ticketKind = signal<TicketTypeKind>('STANDARD');
   private readonly formVersion = signal(0);
 
@@ -501,6 +605,22 @@ export class EventWizardPage {
     maxPerOrder: [5],
     description: ['']
   });
+
+  protected readonly participantForm = this.fb.nonNullable.group({
+    firstName: ['', [Validators.required, Validators.minLength(2)]],
+    lastName: ['', [Validators.required, Validators.minLength(2)]],
+    email: ['', [Validators.required, Validators.email]],
+    phone: [''],
+    ticketTypeTempId: ['', [Validators.required]],
+    quantity: [1, [Validators.required, Validators.min(1)]]
+  });
+
+  protected readonly participantTicketOptions = computed<SelectOption[]>(() =>
+    this.ticketTypesDraft().map((tt) => ({
+      value: tt.tempId,
+      label: `${tt.name} (${tt.price === 0 ? 'Gratuit' : tt.price + ' MAD'})`
+    }))
+  );
 
   protected readonly categoryName = computed(() => {
     this.formVersion();
@@ -678,7 +798,109 @@ export class EventWizardPage {
 
   protected removeTicketType(tempId: string): void {
     this.ticketTypesDraft.update((list) => list.filter((t) => t.tempId !== tempId));
+    this.participantsDraft.update((list) => list.filter((p) => p.ticketTypeTempId !== tempId));
     this.formVersion.update((v) => v + 1);
+  }
+
+  protected ticketDraftLabel(tempId: string): string {
+    return this.ticketTypesDraft().find((t) => t.tempId === tempId)?.name ?? 'Billet';
+  }
+
+  protected addParticipant(): void {
+    this.participantForm.markAllAsTouched();
+    if (this.participantForm.invalid) return;
+    if (this.ticketTypesDraft().length === 0) {
+      this.toast.error('Ajoutez d’abord un type de billet.');
+      return;
+    }
+
+    const value = this.participantForm.getRawValue();
+    this.participantsDraft.update((list) => [
+      ...list,
+      {
+        tempId: `guest-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        firstName: value.firstName.trim(),
+        lastName: value.lastName.trim(),
+        email: value.email.trim(),
+        phone: value.phone.trim() || undefined,
+        ticketTypeTempId: value.ticketTypeTempId,
+        quantity: Number(value.quantity) || 1
+      }
+    ]);
+
+    const defaultTicket =
+      this.ticketTypesDraft().find((t) => t.kind === 'STANDARD')?.tempId ?? this.ticketTypesDraft()[0]?.tempId ?? '';
+    this.participantForm.reset({
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      ticketTypeTempId: defaultTicket,
+      quantity: 1
+    });
+  }
+
+  protected removeParticipant(tempId: string): void {
+    this.participantsDraft.update((list) => list.filter((p) => p.tempId !== tempId));
+  }
+
+  protected downloadImportTemplate(): void {
+    downloadParticipantImportTemplate();
+    this.toast.success('Modèle Excel téléchargé.');
+  }
+
+  protected openImportPicker(): void {
+    const input = this.wizardImportInput()?.nativeElement;
+    if (input) {
+      input.value = '';
+      input.click();
+    }
+  }
+
+  protected async onWizardImportFileSelected(domEvent: Event): Promise<void> {
+    const input = domEvent.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    if (this.ticketTypesDraft().length === 0) {
+      this.toast.error('Ajoutez d’abord au moins un type de billet.');
+      return;
+    }
+
+    try {
+      const result = await parseParticipantSpreadsheet(file);
+      const defaultTicket =
+        this.ticketTypesDraft().find((t) => t.kind === 'STANDARD')?.tempId ?? this.ticketTypesDraft()[0]?.tempId;
+      if (!defaultTicket) return;
+
+      const ticketTypes = this.ticketTypesDraft().map((t) => ({
+        id: t.id ?? t.tempId,
+        tempId: t.tempId,
+        name: t.name
+      }));
+
+      const guests = result.rows
+        .filter((row) => !row.error)
+        .map((row) => ({
+          tempId: `guest-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${row.rowNumber}`,
+          firstName: row.firstName,
+          lastName: row.lastName,
+          email: row.email,
+          phone: row.phone,
+          ticketTypeTempId: matchTicketTypeId(row.ticketTypeName, ticketTypes, defaultTicket) ?? defaultTicket,
+          quantity: row.quantity
+        }));
+
+      this.participantsDraft.update((list) => [...list, ...guests]);
+      this.importSummary.set(
+        `Import « ${file.name} » : ${guests.length} ajouté(s)` +
+          (result.errorCount > 0 ? `, ${result.errorCount} ligne(s) ignorée(s)` : '')
+      );
+      this.toast.success(`${guests.length} participant(s) ajouté(s) à la liste.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Impossible de lire le fichier.';
+      this.toast.error(message);
+    }
   }
 
   protected goNext(): void {
@@ -692,10 +914,6 @@ export class EventWizardPage {
 
   protected saveAsDraft(): void {
     this.save('BROUILLON');
-  }
-
-  protected submitForReview(): void {
-    this.save('EN_REVISION');
   }
 
   protected publishNow(): void {
@@ -731,13 +949,23 @@ export class EventWizardPage {
         this.toast.error('Ajoutez au moins un type de billet avant de continuer.');
         return false;
       }
+      const defaultTicket =
+        this.ticketTypesDraft().find((t) => t.kind === 'STANDARD')?.tempId ?? this.ticketTypesDraft()[0]?.tempId ?? '';
+      if (!this.participantForm.controls.ticketTypeTempId.value) {
+        this.participantForm.controls.ticketTypeTempId.setValue(defaultTicket);
+      }
+      return true;
+    }
+
+    if (index === 4) {
+      // Participants are optional at creation time.
       return true;
     }
 
     return true;
   }
 
-  private buildEventPayload(): CreateEventRequest {
+  private buildEventPayload(status?: EventStatus): CreateEventRequest {
     const info = this.infoForm.getRawValue();
     const dateVenue = this.dateVenueForm.getRawValue();
     const capacity = this.capacityForm.getRawValue();
@@ -757,7 +985,8 @@ export class EventWizardPage {
       capacity: capacity.capacity,
       visibility: capacity.visibility as EventVisibility,
       isFree: capacity.isFree,
-      priceFrom: capacity.isFree ? 0 : minTicketPrice
+      priceFrom: capacity.isFree ? 0 : minTicketPrice,
+      ...(status === 'PUBLIE' || status === 'BROUILLON' ? { status } : {})
     };
   }
 
@@ -765,25 +994,47 @@ export class EventWizardPage {
     if (this.saving()) return;
     this.saving.set(true);
 
-    const payload = this.buildEventPayload();
+    const payload = this.buildEventPayload(status);
     const pendingTicketTypes = this.ticketTypesDraft().filter((t) => !t.persisted);
+    const guests = this.participantsDraft();
 
     const finalize = (eventId: string, currentStatus: EventStatus) => {
-      const finish = () => {
+      const navigateToEvent = () => {
         this.saving.set(false);
-        this.toast.success(this.isEditMode() ? 'Événement mis à jour avec succès.' : 'Événement créé avec succès.');
-        this.router.navigate(['/organisateur/evenements']);
+        this.router.navigate(['/organisateur/evenements', eventId, 'inscriptions']);
       };
 
-      if (currentStatus !== status) {
-        this.eventService.updateStatus(eventId, status).subscribe({ next: finish, error: finish });
-      } else {
-        finish();
+      if (currentStatus === status) {
+        this.toast.success(
+          status === 'PUBLIE'
+            ? 'Événement publié.'
+            : this.isEditMode()
+              ? 'Événement mis à jour avec succès.'
+              : 'Brouillon enregistré.'
+        );
+        navigateToEvent();
+        return;
       }
+
+      this.eventService.updateStatus(eventId, status).subscribe({
+        next: () => {
+          this.toast.success(status === 'PUBLIE' ? 'Événement publié.' : 'Statut mis à jour.');
+          navigateToEvent();
+        },
+        error: () => {
+          this.saving.set(false);
+          this.toast.error(
+            status === 'PUBLIE'
+              ? "L'événement a été enregistré, mais la publication a échoué. Réessayez depuis l'édition."
+              : 'Impossible de mettre à jour le statut.'
+          );
+          this.router.navigate(['/organisateur/evenements', eventId, 'modifier']);
+        }
+      });
     };
 
-    const createTicketTypes = (eventId: string): Observable<null> => {
-      if (pendingTicketTypes.length === 0) return of(null);
+    const createTicketTypes = (eventId: string): Observable<TicketType[]> => {
+      if (pendingTicketTypes.length === 0) return of([]);
       const requests = pendingTicketTypes.map((draft) => {
         const ticketPayload: CreateTicketTypeRequest = {
           eventId,
@@ -797,19 +1048,63 @@ export class EventWizardPage {
         };
         return this.ticketService.createTicketType(eventId, ticketPayload);
       });
+      return forkJoin(requests);
+    };
+
+    const resolveTicketTypeIdMap = (created: TicketType[]): Record<string, string> => {
+      const mapIds: Record<string, string> = {};
+      for (const draft of this.ticketTypesDraft()) {
+        if (draft.persisted && draft.id) {
+          mapIds[draft.tempId] = draft.id;
+        }
+      }
+      pendingTicketTypes.forEach((draft, index) => {
+        const createdType = created[index];
+        if (createdType) {
+          mapIds[draft.tempId] = createdType.id;
+        }
+      });
+      return mapIds;
+    };
+
+    const createParticipants = (eventId: string, ticketTypeIdByTempId: Record<string, string>): Observable<null> => {
+      if (guests.length === 0) return of(null);
+      const requests = guests.map((guest) => {
+        const ticketTypeId = ticketTypeIdByTempId[guest.ticketTypeTempId];
+        if (!ticketTypeId) {
+          return of(null);
+        }
+        return this.registrationService.create({
+          eventId,
+          ticketTypeId,
+          quantity: guest.quantity,
+          participantFirstName: guest.firstName,
+          participantLastName: guest.lastName,
+          participantEmail: guest.email,
+          participantPhone: guest.phone
+        });
+      });
       return forkJoin(requests).pipe(map(() => null));
+    };
+
+    const afterEventSaved = (eventId: string, currentStatus: EventStatus) => {
+      createTicketTypes(eventId)
+        .pipe(switchMap((created) => createParticipants(eventId, resolveTicketTypeIdMap(created))))
+        .subscribe({
+          next: () => finalize(eventId, currentStatus),
+          error: () => {
+            this.toast.error('Événement enregistré, mais certains participants n’ont pas pu être inscrits.');
+            finalize(eventId, currentStatus);
+          }
+        });
     };
 
     const currentId = this.id();
 
     if (this.isEditMode() && currentId) {
-      this.eventService.update(currentId, payload as UpdateEventRequest).subscribe({
-        next: (event) => {
-          createTicketTypes(event.id).subscribe({
-            next: () => finalize(event.id, event.status),
-            error: () => finalize(event.id, event.status)
-          });
-        },
+      const { status: _ignoredStatus, ...updatePayload } = payload;
+      this.eventService.update(currentId, updatePayload as UpdateEventRequest).subscribe({
+        next: (event) => afterEventSaved(event.id, event.status),
         error: () => {
           this.saving.set(false);
           this.toast.error("Impossible d'enregistrer les modifications.");
@@ -817,12 +1112,7 @@ export class EventWizardPage {
       });
     } else {
       this.eventService.create(payload).subscribe({
-        next: (event) => {
-          createTicketTypes(event.id).subscribe({
-            next: () => finalize(event.id, event.status),
-            error: () => finalize(event.id, event.status)
-          });
-        },
+        next: (event) => afterEventSaved(event.id, event.status),
         error: () => {
           this.saving.set(false);
           this.toast.error("Impossible de créer l'événement.");

@@ -1,9 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, HostListener, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, RotateCcw, ScrollText, Search, SlidersHorizontal, User } from 'lucide-angular';
+import { Observable } from 'rxjs';
 
 import { AdminService } from '../../core/api/admin.service';
-import { AuditLogEntry, ChartPoint } from '../../core/models';
+import { AuditLogEntry, ChartPoint, PageResponse } from '../../core/models';
 import { AdminDonutChartComponent } from '../../shared/admin/admin-donut-chart.component';
 import { AdminStatusSpectrumComponent } from '../../shared/admin/admin-status-spectrum.component';
 import { EmptyStateComponent } from '../../shared/ui/empty-state/empty-state.component';
@@ -15,21 +16,71 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 const DAY_MS = 86_400_000;
 
 const ACTION_LABELS: Record<string, string> = {
+  USER_REGISTERED: 'Création de compte',
   USER_SUSPENDED: 'Suspension utilisateur',
   USER_REACTIVATED: 'Réactivation utilisateur',
-  EVENT_PUBLISHED: 'Événement publié',
-  EVENT_CANCELLED: 'Événement annulé',
-  REFUND_PROCESSED: 'Remboursement traité',
-  REFUND_REJECTED: 'Remboursement rejeté'
+  IMPERSONATE_USER: 'Impersonation',
+  EVENT_CREATED: 'Événement créé',
+  EVENT_UPDATED: 'Événement modifié',
+  EVENT_STATUS_CHANGED: 'Statut événement',
+  EVENT_DELETED: 'Événement supprimé',
+  EVENT_DUPLICATED: 'Événement dupliqué',
+  PUBLIC_REGISTRATION_ENABLED: 'Lien inscription activé',
+  PUBLIC_REGISTRATION_REVOKED: 'Lien inscription révoqué',
+  REGISTRATION_CREATED: 'Inscription ajoutée',
+  PUBLIC_REGISTRATION_CREATED: 'Inscription publique',
+  REGISTRATION_CANCELLED: 'Inscription annulée',
+  REGISTRATION_DELETED: 'Inscription supprimée',
+  REGISTRATION_CHECKED_IN: 'Check-in participant',
+  REGISTRATION_STATUS_CHANGED: 'Statut inscription',
+  REGISTRATION_TICKET_TYPE_CHANGED: 'Billet modifié',
+  TICKET_TYPE_CREATED: 'Type de billet créé',
+  TICKET_TYPE_UPDATED: 'Type de billet modifié',
+  TICKET_TYPE_DELETED: 'Type de billet supprimé',
+  REFUND_REQUESTED: 'Remboursement demandé',
+  APPROVE_REFUND: 'Remboursement approuvé',
+  REJECT_REFUND: 'Remboursement rejeté',
+  CATEGORY_CREATED: 'Catégorie créée',
+  CATEGORY_UPDATED: 'Catégorie modifiée',
+  CATEGORY_DELETED: 'Catégorie supprimée',
+  VENUE_CREATED: 'Lieu créé',
+  VENUE_UPDATED: 'Lieu modifié',
+  VENUE_DELETED: 'Lieu supprimé',
+  REPORT_EXPORTED: 'Rapport exporté'
 };
 
 const ACTION_COLORS: Record<string, string> = {
+  USER_REGISTERED: '#53B29A',
   USER_SUSPENDED: '#F43F5E',
   USER_REACTIVATED: '#53B29A',
-  EVENT_PUBLISHED: '#3B82F6',
-  EVENT_CANCELLED: '#94A3B8',
-  REFUND_PROCESSED: '#F59E0B',
-  REFUND_REJECTED: '#6366F1'
+  IMPERSONATE_USER: '#8B5CF6',
+  EVENT_CREATED: '#3B82F6',
+  EVENT_UPDATED: '#0EA5E9',
+  EVENT_STATUS_CHANGED: '#6366F1',
+  EVENT_DELETED: '#94A3B8',
+  EVENT_DUPLICATED: '#8B5CF6',
+  PUBLIC_REGISTRATION_ENABLED: '#53B29A',
+  PUBLIC_REGISTRATION_REVOKED: '#F59E0B',
+  REGISTRATION_CREATED: '#53B29A',
+  PUBLIC_REGISTRATION_CREATED: '#2B8A72',
+  REGISTRATION_CANCELLED: '#F43F5E',
+  REGISTRATION_DELETED: '#94A3B8',
+  REGISTRATION_CHECKED_IN: '#0EA5E9',
+  REGISTRATION_STATUS_CHANGED: '#6366F1',
+  REGISTRATION_TICKET_TYPE_CHANGED: '#8B5CF6',
+  TICKET_TYPE_CREATED: '#53B29A',
+  TICKET_TYPE_UPDATED: '#0EA5E9',
+  TICKET_TYPE_DELETED: '#F43F5E',
+  REFUND_REQUESTED: '#F59E0B',
+  APPROVE_REFUND: '#53B29A',
+  REJECT_REFUND: '#F43F5E',
+  CATEGORY_CREATED: '#3B82F6',
+  CATEGORY_UPDATED: '#0EA5E9',
+  CATEGORY_DELETED: '#94A3B8',
+  VENUE_CREATED: '#3B82F6',
+  VENUE_UPDATED: '#0EA5E9',
+  VENUE_DELETED: '#94A3B8',
+  REPORT_EXPORTED: '#6366F1'
 };
 
 interface Bucket {
@@ -465,6 +516,9 @@ export class AdminAuditLogPage {
   protected actionPillClass(action: string): string {
     if (action.startsWith('USER_')) return 'admin-audit-action-pill admin-audit-action-pill--user';
     if (action.startsWith('EVENT_')) return 'admin-audit-action-pill admin-audit-action-pill--event';
+    if (action.startsWith('REGISTRATION_') || action.startsWith('PUBLIC_REGISTRATION_')) {
+      return 'admin-audit-action-pill admin-audit-action-pill--event';
+    }
     if (action.startsWith('REFUND_')) return 'admin-audit-action-pill admin-audit-action-pill--refund';
     return 'admin-audit-action-pill admin-audit-action-pill--default';
   }
@@ -530,9 +584,9 @@ export class AdminAuditLogPage {
 
   private fetchLogs(): void {
     this.loading.set(true);
-    this.adminService.getAuditLogs({ page: 0, size: 200, sort: 'createdAt,desc' }).subscribe({
+    this.fetchLogsPage(0, []).subscribe({
       next: (res) => {
-        this.logs.set(res.content);
+        this.logs.set(res);
         this.loading.set(false);
       },
       error: () => {
@@ -540,6 +594,23 @@ export class AdminAuditLogPage {
         this.loading.set(false);
         this.toast.error("Impossible de charger le journal d'audit.");
       }
+    });
+  }
+
+  private fetchLogsPage(page: number, acc: AuditLogEntry[]) {
+    return new Observable<AuditLogEntry[]>((subscriber) => {
+      this.adminService.getAuditLogs({ page, size: 100, sort: 'createdAt,desc' }).subscribe({
+        next: (res: PageResponse<AuditLogEntry>) => {
+          const nextAcc = [...acc, ...res.content];
+          if (page + 1 < res.totalPages) {
+            this.fetchLogsPage(page + 1, nextAcc).subscribe(subscriber);
+          } else {
+            subscriber.next(nextAcc);
+            subscriber.complete();
+          }
+        },
+        error: (err) => subscriber.error(err)
+      });
     });
   }
 }

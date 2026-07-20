@@ -1,4 +1,4 @@
-import { Component, computed, input } from '@angular/core';
+import { Component, computed, effect, input, signal } from '@angular/core';
 
 export type AvatarSize = 'sm' | 'md' | 'lg';
 
@@ -18,7 +18,15 @@ export class AvatarComponent {
   readonly url = input<string | undefined>(undefined);
   readonly size = input<AvatarSize>('md');
 
+  /** True when the remote/data image failed to load — fall back to initials. */
+  protected readonly imageFailed = signal(false);
+
   protected readonly sizeClasses = computed(() => SIZE_CLASSES[this.size()]);
+
+  protected readonly showImage = computed(() => {
+    const src = this.url()?.trim();
+    return !!src && !this.imageFailed();
+  });
 
   protected readonly initials = computed(() => {
     const value = this.name();
@@ -30,4 +38,15 @@ export class AvatarComponent {
     const result = `${first}${last}`.toUpperCase();
     return result || '?';
   });
+
+  constructor() {
+    effect(() => {
+      this.url();
+      this.imageFailed.set(false);
+    });
+  }
+
+  protected onImageError(): void {
+    this.imageFailed.set(true);
+  }
 }

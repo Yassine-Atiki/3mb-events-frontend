@@ -1,4 +1,4 @@
-import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { Component, computed, DestroyRef, ElementRef, HostListener, inject, signal, viewChild } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs/operators';
 import {
@@ -8,18 +8,14 @@ import {
   CalendarDays,
   ChartColumn,
   ChevronDown,
-  Compass,
   FolderTree,
   LayoutDashboard,
-  ListChecks,
   LogOut,
   LucideAngularModule,
   Menu,
   ScanLine,
   ScrollText,
   Settings,
-  ShieldAlert,
-  UserCog,
   Users
 } from 'lucide-angular';
 
@@ -32,7 +28,6 @@ import { ToastContainerComponent } from '../../ui/toast/toast-container.componen
 import { IconRailComponent, ICON_RAIL_COLLAPSED_W, ICON_RAIL_EXPANDED_W, NavItem } from '../icon-rail/icon-rail.component';
 
 const ROLE_HOME: Record<string, string> = {
-  PARTICIPANT: '/app/tableau-de-bord',
   ORGANIZER: '/organisateur/tableau-de-bord',
   ADMIN: '/admin/tableau-de-bord'
 };
@@ -69,6 +64,8 @@ export class AppShellComponent {
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly confirmDialog = inject(ConfirmDialogService);
+  private readonly notificationsMenuRef = viewChild<ElementRef<HTMLElement>>('notificationsMenu');
+  private readonly userMenuRef = viewChild<ElementRef<HTMLElement>>('userMenu');
 
   protected readonly notifOpen = signal(false);
   protected readonly userMenuOpen = signal(false);
@@ -94,7 +91,7 @@ export class AppShellComponent {
       case 'ADMIN':
         return 'Administrateur';
       default:
-        return 'Participant';
+        return 'Compte';
     }
   });
 
@@ -105,7 +102,7 @@ export class AppShellComponent {
       case 'ADMIN':
         return '/admin/profil';
       default:
-        return '/app/profil';
+        return '/403';
     }
   });
 
@@ -115,6 +112,8 @@ export class AppShellComponent {
         return [
           { label: 'Tableau de bord', path: '/organisateur/tableau-de-bord', icon: LayoutDashboard },
           { label: 'Mes événements', path: '/organisateur/evenements', icon: CalendarDays },
+          { label: 'Lieux', path: '/organisateur/lieux', icon: Building2 },
+          { label: 'Catégories', path: '/organisateur/categories', icon: FolderTree },
           { label: 'Scanner', path: '/organisateur/scanner', icon: ScanLine },
           { label: 'Remboursements', path: '/organisateur/remboursements', icon: Banknote }
         ];
@@ -122,21 +121,11 @@ export class AppShellComponent {
         return [
           { label: 'Tableau de bord', path: '/admin/tableau-de-bord', icon: LayoutDashboard },
           { label: 'Utilisateurs', path: '/admin/utilisateurs', icon: Users },
-          { label: 'Modération', path: '/admin/moderation', icon: ShieldAlert },
-          { label: 'Catégories', path: '/admin/categories', icon: FolderTree },
-          { label: 'Lieux', path: '/admin/lieux', icon: Building2 },
           { label: 'Journal', path: '/admin/journal', icon: ScrollText },
-          { label: 'Remboursements', path: '/admin/remboursements', icon: Banknote },
           { label: 'Rapports', path: '/admin/rapports', icon: ChartColumn }
         ];
       default:
-        return [
-          { label: 'Découvrir', path: '/app/decouvrir', icon: Compass },
-          { label: 'Tableau de bord', path: '/app/tableau-de-bord', icon: LayoutDashboard },
-          { label: 'Mes inscriptions', path: '/app/mes-inscriptions', icon: ListChecks },
-          { label: 'Remboursements', path: '/app/remboursements', icon: Banknote },
-          { label: 'Profil', path: '/app/profil', icon: UserCog }
-        ];
+        return [];
     }
   });
 
@@ -185,6 +174,29 @@ export class AppShellComponent {
     this.notifOpen.set(false);
   }
 
+  protected closeUserMenu(): void {
+    this.userMenuOpen.set(false);
+  }
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    const target = event.target as Node;
+
+    if (this.userMenuOpen()) {
+      const userMenu = this.userMenuRef()?.nativeElement;
+      if (userMenu && !userMenu.contains(target)) {
+        this.userMenuOpen.set(false);
+      }
+    }
+
+    if (this.notifOpen()) {
+      const notificationsMenu = this.notificationsMenuRef()?.nativeElement;
+      if (notificationsMenu && !notificationsMenu.contains(target)) {
+        this.notifOpen.set(false);
+      }
+    }
+  }
+
   protected async logout(): Promise<void> {
     this.userMenuOpen.set(false);
     const confirmed = await this.confirmDialog.confirm({
@@ -197,6 +209,6 @@ export class AppShellComponent {
     if (!confirmed) return;
 
     this.authStore.logout();
-    this.router.navigate(['/']);
+    this.router.navigate(['/auth/connexion']);
   }
 }

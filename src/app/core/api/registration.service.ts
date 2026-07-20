@@ -9,11 +9,15 @@ export interface CreateRegistrationRequest {
   eventId: string;
   ticketTypeId: string;
   quantity: number;
+  participantFirstName: string;
+  participantLastName: string;
+  participantEmail: string;
+  participantPhone?: string;
 }
 
 export interface RegistrationSearchParams extends PageRequest {
   eventId?: string;
-  userId?: string;
+  participantEmail?: string;
   status?: RegistrationStatus;
 }
 
@@ -26,17 +30,13 @@ export class RegistrationService {
     let httpParams = new HttpParams().set('page', params.page).set('size', params.size);
     if (params.sort) httpParams = httpParams.set('sort', params.sort);
     if (params.eventId) httpParams = httpParams.set('eventId', params.eventId);
-    if (params.userId) httpParams = httpParams.set('userId', params.userId);
+    if (params.participantEmail) httpParams = httpParams.set('participantEmail', params.participantEmail);
     if (params.status) httpParams = httpParams.set('status', params.status);
     return this.http.get<PageResponse<Registration>>(this.baseUrl, { params: httpParams });
   }
 
   getById(id: string): Observable<Registration> {
     return this.http.get<Registration>(`${this.baseUrl}/${id}`);
-  }
-
-  getMine(): Observable<Registration[]> {
-    return this.http.get<Registration[]>(`${this.baseUrl}/me`);
   }
 
   create(payload: CreateRegistrationRequest): Observable<Registration> {
@@ -54,4 +54,22 @@ export class RegistrationService {
   updateStatus(id: string, status: RegistrationStatus): Observable<Registration> {
     return this.http.patch<Registration>(`${this.baseUrl}/${id}/status`, { status });
   }
+
+  changeTicketType(id: string, ticketTypeId: string): Observable<Registration> {
+    return this.http.patch<Registration>(`${this.baseUrl}/${id}/ticket-type`, { ticketTypeId });
+  }
+
+  delete(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/${id}`);
+  }
+
+  sendTicketEmail(id: string): Observable<TicketEmailSendResult> {
+    return this.http.post<TicketEmailSendResult>(`${this.baseUrl}/${id}/send-ticket`, {});
+  }
+}
+
+export interface TicketEmailSendResult {
+  sent: number;
+  skipped: number;
+  message: string;
 }

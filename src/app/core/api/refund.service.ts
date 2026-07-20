@@ -24,10 +24,6 @@ export class RefundService {
     return this.http.post<RefundRequest>(this.baseUrl, payload);
   }
 
-  getMine(): Observable<RefundRequest[]> {
-    return this.http.get<RefundRequest[]>(`${this.baseUrl}/me`);
-  }
-
   search(params: RefundSearchParams): Observable<PageResponse<RefundRequest>> {
     let httpParams = new HttpParams().set('page', params.page).set('size', params.size);
     if (params.sort) httpParams = httpParams.set('sort', params.sort);

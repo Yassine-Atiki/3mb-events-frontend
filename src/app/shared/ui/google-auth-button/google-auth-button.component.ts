@@ -2,8 +2,8 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { finalize, from, switchMap } from 'rxjs';
 
-import { AuthService, GoogleAuthRequest } from '../../../core/api/auth.service';
-import { AuthSessionService } from '../../../core/auth/auth-session.service';
+import { AuthService, GoogleAuthRequest, isAuthResponse } from '../../../core/api/auth.service';
+import { AuthLoginFlowService } from '../../../core/auth/auth-login-flow.service';
 import { GoogleAuthService } from '../../../core/auth/google-auth.service';
 import { UserRole } from '../../../core/models';
 import { ToastService } from '../toast/toast.service';
@@ -66,7 +66,7 @@ import { ToastService } from '../toast/toast.service';
 export class GoogleAuthButtonComponent {
   private readonly googleAuth = inject(GoogleAuthService);
   private readonly authService = inject(AuthService);
-  private readonly authSession = inject(AuthSessionService);
+  private readonly loginFlow = inject(AuthLoginFlowService);
   private readonly toast = inject(ToastService);
 
   /** When set, creates/signs in with this role (ORGANIZER requires organization). */
@@ -111,13 +111,17 @@ export class GoogleAuthButtonComponent {
         finalize(() => this.loading.set(false))
       )
       .subscribe({
-        next: (response) => {
-          const msg = this.successMessage();
-          if (msg) {
-            this.toast.success(msg);
+        next: (result) => {
+          const completed = this.loginFlow.handleLoginResult(result, {
+            preferQueryReturnUrl: true
+          });
+          if (completed && isAuthResponse(result)) {
+            const msg = this.successMessage();
+            if (msg) {
+              this.toast.success(msg);
+            }
+            this.completed.emit();
           }
-          this.authSession.completeAuthSession(response);
-          this.completed.emit();
         },
         error: (error: unknown) => {
           if (error instanceof HttpErrorResponse) {

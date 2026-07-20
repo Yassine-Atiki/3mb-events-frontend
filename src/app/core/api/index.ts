@@ -4,6 +4,7 @@ export * from './event.service';
 export * from './category.service';
 export * from './venue.service';
 export * from './registration.service';
+export * from './public-registration.service';
 export * from './ticket.service';
 export * from './payment.service';
 export * from './refund.service';

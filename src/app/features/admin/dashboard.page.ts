@@ -66,10 +66,6 @@ const STATUS_LABELS: Record<string, string> = {
             Utilisateurs
             <lucide-angular [img]="icons.ArrowUpRight" [size]="14"></lucide-angular>
           </a>
-          <a routerLink="/admin/moderation" class="admin-quick-link">
-            Modération
-            <lucide-angular [img]="icons.ArrowUpRight" [size]="14"></lucide-angular>
-          </a>
           <a routerLink="/admin/rapports" class="admin-quick-link">
             Rapports
             <lucide-angular [img]="icons.ArrowUpRight" [size]="14"></lucide-angular>
@@ -217,7 +213,7 @@ const STATUS_LABELS: Record<string, string> = {
           <section class="admin-bento-tile xl:col-span-7">
             <p class="admin-bento-eyebrow">Pipeline</p>
             <h2 class="admin-bento-title">Spectre des statuts</h2>
-            <p class="admin-bento-subtitle">De la création à la publication — lecture instantanée du flux</p>
+            <p class="admin-bento-subtitle">Répartition des événements par statut (catalogue plateforme)</p>
             <div class="mt-6">
               <app-admin-status-spectrum [points]="s.eventsByStatus" [labelMap]="statusLabels" />
             </div>

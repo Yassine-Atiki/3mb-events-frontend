@@ -24,7 +24,6 @@ import { SkeletonComponent } from '../../shared/ui/skeleton/skeleton.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
 const ROLE_LABELS: Record<UserRole, string> = {
-  PARTICIPANT: 'Participant',
   ORGANIZER: 'Organisateur',
   ADMIN: 'Administrateur'
 };
@@ -69,7 +68,7 @@ const STATUS_COLORS: Record<UserStatus, string> = {
           </div>
           <h1 class="text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">Utilisateurs</h1>
           <p class="mt-1 max-w-2xl text-sm text-text-secondary">
-            Gouvernance des comptes participants, organisateurs et administrateurs — rôles, statuts et actions.
+            Gouvernance des comptes organisateurs et administrateurs — rôles, statuts et actions.
           </p>
         </div>
         <div class="rounded-full border border-brand-teal/20 bg-brand-teal/10 px-4 py-2 font-mono text-sm font-semibold tabular-nums text-brand-teal-dark">
@@ -116,7 +115,7 @@ const STATUS_COLORS: Record<UserStatus, string> = {
                 <p class="admin-command-metric-label">Organisateurs</p>
                 <p class="admin-command-metric-value">{{ roleCount('ORGANIZER') }}</p>
               </div>
-              <span class="admin-command-metric-chip">{{ roleCount('PARTICIPANT') }} participants</span>
+              <span class="admin-command-metric-chip">{{ roleCount('ADMIN') }} administrateurs</span>
             </article>
 
             <article class="admin-command-metric admin-command-metric--accent">
@@ -368,7 +367,6 @@ export class AdminUsersPage {
 
   protected readonly roleOptions: SelectOption[] = [
     { value: 'all', label: 'Tous les rôles' },
-    { value: 'PARTICIPANT', label: 'Participant' },
     { value: 'ORGANIZER', label: 'Organisateur' },
     { value: 'ADMIN', label: 'Administrateur' }
   ];
@@ -382,7 +380,6 @@ export class AdminUsersPage {
   ];
 
   protected readonly roleAssignOptions: SelectOption[] = [
-    { value: 'PARTICIPANT', label: 'Participant' },
     { value: 'ORGANIZER', label: 'Organisateur' },
     { value: 'ADMIN', label: 'Administrateur' }
   ];
@@ -408,7 +405,6 @@ export class AdminUsersPage {
   });
 
   protected readonly roleChart = computed<ChartPoint[]>(() => [
-    { label: 'Participants', value: this.roleCount('PARTICIPANT') },
     { label: 'Organisateurs', value: this.roleCount('ORGANIZER') },
     { label: 'Administrateurs', value: this.roleCount('ADMIN') }
   ]);
@@ -529,7 +525,6 @@ export class AdminUsersPage {
 
   protected rolePillClass(role: UserRole): string {
     const map: Record<UserRole, string> = {
-      PARTICIPANT: 'admin-role-pill--participant',
       ORGANIZER: 'admin-role-pill--organizer',
       ADMIN: 'admin-role-pill--admin'
     };

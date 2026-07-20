@@ -1,5 +1,5 @@
-import { BadgeTone } from '../../../shared/ui/badge/badge.component';
-import { RefundStatus, RegistrationStatus, TicketStatus } from '../../../core/models';
+import { BadgeTone } from '../ui/badge/badge.component';
+import { RefundStatus, RegistrationStatus, TicketStatus } from '../../core/models';
 
 export interface StatusBadgeConfig {
   label: string;
@@ -11,7 +11,7 @@ const REGISTRATION_STATUS_CONFIG: Record<RegistrationStatus, StatusBadgeConfig> 
   CONFIRMED: { label: 'Confirmée', tone: 'teal' },
   WAITLIST: { label: "Liste d'attente", tone: 'amber' },
   CANCELLED: { label: 'Annulée', tone: 'gray' },
-  ATTENDED: { label: 'Participée', tone: 'green' },
+  ATTENDED: { label: 'Présent', tone: 'green' },
   REFUNDED: { label: 'Remboursée', tone: 'blue' }
 };
 

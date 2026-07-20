@@ -5,6 +5,7 @@ import { filter, map, Observable, take } from 'rxjs';
 
 import { UserRole } from '../models';
 import { AuthStore } from './auth.store';
+import { needsOrganizationSetup } from './organization.util';
 
 /**
  * Wait until AuthStore finishes hydrating tokens → user after a full page reload.
@@ -15,6 +16,20 @@ function afterSessionReady(authStore: InstanceType<typeof AuthStore>): Observabl
     filter((ready) => ready),
     take(1)
   );
+}
+
+function postAuthHome(user: NonNullable<ReturnType<InstanceType<typeof AuthStore>['user']>>): string[] {
+  if (needsOrganizationSetup(user)) {
+    return ['/auth/organisation-requise'];
+  }
+  switch (user.role) {
+    case 'ORGANIZER':
+      return ['/organisateur/tableau-de-bord'];
+    case 'ADMIN':
+      return ['/admin/tableau-de-bord'];
+    default:
+      return ['/403'];
+  }
 }
 
 export const authGuard: CanActivateFn = (_route, state): Observable<boolean | UrlTree> => {
@@ -40,14 +55,11 @@ export const guestGuard: CanActivateFn = (): Observable<boolean | UrlTree> => {
         return true;
       }
 
-      switch (authStore.user()?.role) {
-        case 'ORGANIZER':
-          return router.createUrlTree(['/organisateur/tableau-de-bord']);
-        case 'ADMIN':
-          return router.createUrlTree(['/admin/tableau-de-bord']);
-        default:
-          return router.createUrlTree(['/app/tableau-de-bord']);
+      const user = authStore.user();
+      if (!user) {
+        return true;
       }
+      return router.createUrlTree(postAuthHome(user));
     })
   );
 };
@@ -73,3 +85,41 @@ export function roleGuard(...roles: UserRole[]): CanActivateFn {
     );
   };
 }
+
+/** Blocks organizer app routes until organization name is set. */
+export const organizationRequiredGuard: CanActivateFn = (): Observable<boolean | UrlTree> => {
+  const authStore = inject(AuthStore);
+  const router = inject(Router);
+
+  return afterSessionReady(authStore).pipe(
+    map(() => {
+      const user = authStore.user();
+      if (needsOrganizationSetup(user)) {
+        return router.createUrlTree(['/auth/organisation-requise']);
+      }
+      return true;
+    })
+  );
+};
+
+/** Allows the blocking setup screen only when organization setup is still required. */
+export const organizationSetupGuard: CanActivateFn = (): Observable<boolean | UrlTree> => {
+  const authStore = inject(AuthStore);
+  const router = inject(Router);
+
+  return afterSessionReady(authStore).pipe(
+    map(() => {
+      const user = authStore.user();
+      if (!user) {
+        return router.createUrlTree(['/auth/connexion']);
+      }
+      if (user.role === 'ADMIN') {
+        return router.createUrlTree(['/admin/tableau-de-bord']);
+      }
+      if (!needsOrganizationSetup(user)) {
+        return router.createUrlTree(['/organisateur/tableau-de-bord']);
+      }
+      return true;
+    })
+  );
+};

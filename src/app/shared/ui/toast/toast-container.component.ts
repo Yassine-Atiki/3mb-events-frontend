@@ -7,12 +7,6 @@ const TONE_CLASSES: Record<ToastType, string> = {
   info: 'border-blue-200 bg-blue-50 text-blue-700'
 };
 
-const ICONS: Record<ToastType, string> = {
-  success: '✓',
-  error: '✕',
-  info: 'ℹ'
-};
-
 @Component({
   selector: 'app-ui-toast-container',
   standalone: true,
@@ -29,9 +23,5 @@ export class ToastContainerComponent {
 
   protected toastClasses(type: ToastType): string {
     return TONE_CLASSES[type];
-  }
-
-  protected toastIcon(type: ToastType): string {
-    return ICONS[type];
   }
 }

@@ -9,12 +9,15 @@ export type RegistrationStatus =
 export interface Registration {
   id: string;
   eventId: string;
-  userId: string;
   ticketTypeId: string;
   status: RegistrationStatus;
   quantity: number;
   totalPrice: number;
   currency: string;
+  participantFirstName: string;
+  participantLastName: string;
+  participantEmail: string;
+  participantPhone?: string;
   createdAt: string;
   updatedAt: string;
   checkedInAt?: string;

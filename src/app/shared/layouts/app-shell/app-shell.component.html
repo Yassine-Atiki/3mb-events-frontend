@@ -37,7 +37,7 @@
         </div>
 
         <div class="lumina-header-actions">
-          <div class="relative">
+          <div class="relative" #notificationsMenu>
             <button
               type="button"
               class="lumina-glass-btn"
@@ -90,7 +90,7 @@
             }
           </div>
 
-          <div class="relative">
+          <div class="relative" #userMenu>
             <button type="button" class="lumina-user-pill" (click)="toggleUserMenu()">
               <app-ui-avatar
                 [name]="(user()?.firstName ?? '') + ' ' + (user()?.lastName ?? '')"
@@ -128,18 +128,11 @@
                 <div class="p-2">
                   <a
                     [routerLink]="profileLink()"
-                    (click)="toggleUserMenu()"
+                    (click)="closeUserMenu()"
                     class="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-text-secondary transition-colors hover:bg-surface-muted hover:text-brand-teal-dark"
                   >
                     <lucide-angular [img]="icons.Settings" [size]="17"></lucide-angular>
                     Mon profil
-                  </a>
-                  <a
-                    routerLink="/"
-                    class="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-text-secondary transition-colors hover:bg-surface-muted hover:text-brand-teal-dark"
-                  >
-                    <lucide-angular [img]="icons.LogOut" [size]="17"></lucide-angular>
-                    Retour au site
                   </a>
                   <button
                     type="button"

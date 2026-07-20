@@ -19,10 +19,10 @@ import type { Html5Qrcode } from 'html5-qrcode';
 
 import { EventService } from '../../core/api/event.service';
 import { TicketService } from '../../core/api/ticket.service';
-import { UserService } from '../../core/api/user.service';
 import { Event, ChartPoint } from '../../core/models';
 import { AdminStatusSpectrumComponent } from '../../shared/admin/admin-status-spectrum.component';
 import { OccupancyArcComponent } from '../../shared/organizer/occupancy-arc.component';
+import { extractEventIdFromQrPayload, extractQrCode } from '../../shared/organizer/qr-payload.util';
 
 type ScanState = 'idle' | 'valid' | 'already' | 'invalid';
 
@@ -237,7 +237,6 @@ export class ScanPage implements AfterViewInit, OnDestroy {
 
   private readonly eventService = inject(EventService);
   private readonly ticketService = inject(TicketService);
-  private readonly userService = inject(UserService);
   private readonly fb = inject(FormBuilder);
 
   private readonly readerRef = viewChild<ElementRef<HTMLDivElement>>('reader');
@@ -260,9 +259,14 @@ export class ScanPage implements AfterViewInit, OnDestroy {
   protected readonly resultVisible = signal(false);
   protected readonly displayName = signal('');
   protected readonly scannedCount = signal(0);
+  protected readonly issuedCount = signal(0);
   protected readonly flashClass = signal('');
 
-  protected readonly totalCapacity = computed(() => this.event()?.capacity ?? 200);
+  protected readonly totalCapacity = computed(() => {
+    const event = this.event();
+    if (!event) return 200;
+    return Math.max(event.capacity || 0, this.issuedCount(), 1);
+  });
 
   protected readonly validHistoryCount = computed(
     () => this.history().filter((entry) => entry.state === 'valid').length
@@ -291,9 +295,18 @@ export class ScanPage implements AfterViewInit, OnDestroy {
       this.eventService.getById(id).subscribe({
         next: (event) => {
           this.event.set(event);
-          this.scannedCount.set(Math.floor(event.capacity * 0.71));
         },
         error: () => this.event.set(null)
+      });
+      this.ticketService.getScanStats(id).subscribe({
+        next: (stats) => {
+          this.scannedCount.set(stats.scanned);
+          this.issuedCount.set(stats.issued);
+        },
+        error: () => {
+          this.scannedCount.set(0);
+          this.issuedCount.set(0);
+        }
       });
     });
   }
@@ -367,30 +380,45 @@ export class ScanPage implements AfterViewInit, OnDestroy {
   }
 
   private handleScan(code: string): void {
+    const eventId = this.eventId();
+    if (!eventId) return;
+
+    const qrCode = extractQrCode(code);
+    const payloadEventId = extractEventIdFromQrPayload(code);
+    if (payloadEventId && payloadEventId !== eventId) {
+      this.showResult('invalid', "Ce billet n'appartient pas à cet événement");
+      this.pushHistory(qrCode, 'invalid', 'Mauvais événement');
+      return;
+    }
+
     const now = Date.now();
-    if (this.lastProcessedCode === code && now - this.lastProcessedAt < 3000) return;
-    this.lastProcessedCode = code;
+    if (this.lastProcessedCode === qrCode && now - this.lastProcessedAt < 3000) return;
+    this.lastProcessedCode = qrCode;
     this.lastProcessedAt = now;
 
-    this.ticketService.validateByQrCode(code).subscribe({
+    this.ticketService.validateByQrCode(qrCode, eventId).subscribe({
       next: (ticket) => {
-        this.showResult('valid', 'Billet valide');
+        const name = `${ticket.participantFirstName} ${ticket.participantLastName}`.trim() || 'Billet valide';
+        this.showResult('valid', name);
         this.scannedCount.update((c) => c + 1);
-        this.pushHistory(code, 'valid', 'Billet valide');
-
-        this.userService.getById(ticket.ownerUserId).subscribe((user) => {
-          const name = `${user.firstName} ${user.lastName}`;
-          this.displayName.set(name);
-          this.updateLastHistoryEntry(name);
-        });
+        this.pushHistory(qrCode, 'valid', 'Billet valide', name);
       },
       error: (error: HttpErrorResponse) => {
         const apiError = error.error as { code?: string; message?: string } | null;
-        const isAlready = apiError?.code === 'ALREADY_SCANNED';
+        const code = apiError?.code;
+        const isAlready = code === 'ALREADY_SCANNED';
         const state: ScanState = isAlready ? 'already' : 'invalid';
-        const message = apiError?.message ?? 'Billet invalide';
+        const message =
+          apiError?.message ??
+          (code === 'WRONG_EVENT'
+            ? "Ce billet n'appartient pas à cet événement"
+            : code === 'TICKET_EXPIRED'
+              ? 'Billet expiré'
+              : code === 'TICKET_CANCELLED'
+                ? 'Billet annulé'
+                : 'Billet invalide');
         this.showResult(state, message);
-        this.pushHistory(code, state, message);
+        this.pushHistory(qrCode, state, message);
       }
     });
   }
@@ -410,20 +438,20 @@ export class ScanPage implements AfterViewInit, OnDestroy {
     }, 1500);
   }
 
-  private pushHistory(code: string, state: ScanHistoryEntry['state'], message: string): void {
+  private pushHistory(
+    code: string,
+    state: ScanHistoryEntry['state'],
+    message: string,
+    participantName?: string
+  ): void {
     const entry: ScanHistoryEntry = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       code,
       state,
       message,
+      participantName,
       scannedAt: new Date().toISOString()
     };
     this.history.update((list) => [entry, ...list].slice(0, 30));
-  }
-
-  private updateLastHistoryEntry(participantName: string): void {
-    this.history.update((list) =>
-      list.map((entry, index) => (index === 0 ? { ...entry, participantName } : entry))
-    );
   }
 }

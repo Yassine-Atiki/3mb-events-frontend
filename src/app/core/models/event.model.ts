@@ -27,6 +27,8 @@ export interface Event {
   visibility: EventVisibility;
   priceFrom: number;
   isFree: boolean;
+  publicRegistrationEnabled?: boolean;
+  publicRegistrationToken?: string | null;
   createdAt: string;
   updatedAt: string;
 }

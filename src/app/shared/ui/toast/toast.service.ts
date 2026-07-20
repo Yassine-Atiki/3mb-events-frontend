@@ -39,7 +39,8 @@ export class ToastService {
   private push(type: ToastType, message: string, durationMs: number): number {
     const id = this.lastId() + 1;
     this.lastId.set(id);
-    this._toasts.update((toasts) => [...toasts, { id, type, message, durationMs }]);
+    const cleanMessage = sanitizeToastMessage(message);
+    this._toasts.update((toasts) => [...toasts, { id, type, message: cleanMessage, durationMs }]);
 
     if (durationMs > 0) {
       setTimeout(() => this.dismiss(id), durationMs);
@@ -47,4 +48,13 @@ export class ToastService {
 
     return id;
   }
+}
+
+/** Strip decorative leading/trailing symbols (✓ ✗ ✕ …) so toasts show plain text only. */
+function sanitizeToastMessage(message: string): string {
+  return message
+    .replace(/^[\s✓✔✅✗✘✖✕×•·ℹℹ️]+/u, '')
+    .replace(/[\s✓✔✅✗✘✖✕×•·ℹℹ️]+$/u, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }

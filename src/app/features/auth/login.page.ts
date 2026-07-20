@@ -5,7 +5,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
 
 import { AuthService } from '../../core/api/auth.service';
-import { AuthSessionService } from '../../core/auth/auth-session.service';
+import { AuthLoginFlowService } from '../../core/auth/auth-login-flow.service';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { GoogleAuthButtonComponent } from '../../shared/ui/google-auth-button/google-auth-button.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
@@ -106,28 +106,15 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
         </div>
       </div>
 
-      <div class="mt-6 grid gap-3 sm:grid-cols-2">
-        <a 
-          routerLink="/auth/inscription/participant" 
-          class="group relative flex items-center justify-center gap-2 rounded-xl border-2 border-brand-teal/30 bg-brand-teal/5 px-4 py-3 text-sm font-semibold text-brand-teal-dark transition-all hover:border-brand-teal hover:bg-brand-teal/10 hover:scale-[1.02]"
-        >
-          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-          </svg>
-          <span>Compte participant</span>
-          <svg class="w-4 h-4 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-          </svg>
-        </a>
-        
-        <a 
-          routerLink="/auth/inscription/organisateur" 
+      <div class="mt-6">
+        <a
+          routerLink="/auth/inscription/organisation"
           class="group relative flex items-center justify-center gap-2 rounded-xl border-2 border-brand-forest/30 bg-brand-forest/5 px-4 py-3 text-sm font-semibold text-brand-forest-deep transition-all hover:border-brand-forest hover:bg-brand-forest/10 hover:scale-[1.02]"
         >
           <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
           </svg>
-          <span>Devenir organisateur</span>
+          <span>Créer un compte organisateur</span>
           <svg class="w-4 h-4 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
           </svg>
@@ -139,7 +126,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 export class LoginPage {
   private readonly fb = inject(FormBuilder);
   private readonly authService = inject(AuthService);
-  private readonly authSession = inject(AuthSessionService);
+  private readonly loginFlow = inject(AuthLoginFlowService);
   private readonly toast = inject(ToastService);
   private readonly route = inject(ActivatedRoute);
 
@@ -162,8 +149,8 @@ export class LoginPage {
       .login({ email, password })
       .pipe(finalize(() => this.loading.set(false)))
       .subscribe({
-        next: (response) => {
-          this.authSession.completeAuthSession(response, {
+        next: (result) => {
+          this.loginFlow.handleLoginResult(result, {
             returnUrl: this.route.snapshot.queryParamMap.get('returnUrl')
           });
         },

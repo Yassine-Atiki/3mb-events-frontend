@@ -10,8 +10,8 @@ import { ToastContainerComponent } from '../../ui/toast/toast-container.componen
 
 const SPLASH_CURSOR_ROUTES = new Set([
   '/auth/connexion',
-  '/auth/inscription/participant',
-  '/auth/inscription/organisateur'
+  '/auth/inscription/organisation',
+  '/auth/organisation-requise'
 ]);
 
 @Component({

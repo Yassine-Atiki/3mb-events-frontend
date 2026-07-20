@@ -48,6 +48,9 @@ const STATUS_OPTIONS: SelectOption[] = [
 
 type ViewMode = 'wall' | 'table';
 
+const FALLBACK_COVER =
+  'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=1200&q=80';
+
 interface AttentionTile extends EventUrgency {
   reason: string;
 }
@@ -140,7 +143,7 @@ interface AttentionTile extends EventUrgency {
               @for (tile of attentionTiles(); track tile.event.id) {
                 <article class="event-wall-tile card-hover-lift group min-h-[220px]">
                   <img
-                    [ngSrc]="tile.event.coverImageUrl"
+                    [ngSrc]="coverUrl(tile.event)"
                     [alt]="tile.event.title"
                     fill
                     priority
@@ -183,38 +186,58 @@ interface AttentionTile extends EventUrgency {
                     </div>
                   </div>
 
-                  <div class="event-wall-actionbar absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-charcoal/85 py-2 backdrop-blur-sm">
+                  <div class="event-wall-actionbar absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-center gap-0.5 bg-charcoal/85 py-1.5 backdrop-blur-sm">
                     <a
                       [routerLink]="['/organisateur/evenements', tile.event.id, 'modifier']"
-                      class="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white/90 hover:bg-white/10"
+                      class="rounded-md p-1.5 text-white/90 hover:bg-white/10"
+                      title="Éditer"
                     >
                       <lucide-angular [img]="icons.Pencil" [size]="14"></lucide-angular>
-                      Éditer
                     </a>
                     <button
                       type="button"
-                      class="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white/90 hover:bg-white/10"
+                      class="rounded-md p-1.5 text-white/90 hover:bg-white/10"
+                      title="Dupliquer"
                       (click)="duplicate(tile.event)"
                     >
                       <lucide-angular [img]="icons.Copy" [size]="14"></lucide-angular>
-                      Dupliquer
                     </button>
                     <a
+                      [routerLink]="['/organisateur/evenements', tile.event.id, 'inscriptions']"
+                      class="rounded-md p-1.5 text-white/90 hover:bg-white/10"
+                      title="Inscriptions"
+                    >
+                      <lucide-angular [img]="icons.ClipboardList" [size]="14"></lucide-angular>
+                    </a>
+                    <a
+                      [routerLink]="['/organisateur/evenements', tile.event.id, 'billetterie']"
+                      class="rounded-md p-1.5 text-white/90 hover:bg-white/10"
+                      title="Billetterie"
+                    >
+                      <lucide-angular [img]="icons.TicketIcon" [size]="14"></lucide-angular>
+                    </a>
+                    <a
+                      [routerLink]="['/organisateur/evenements', tile.event.id, 'statistiques']"
+                      class="rounded-md p-1.5 text-white/90 hover:bg-white/10"
+                      title="Statistiques"
+                    >
+                      <lucide-angular [img]="icons.BarChart3" [size]="14"></lucide-angular>
+                    </a>
+                    <a
                       [routerLink]="['/organisateur/scan', tile.event.id]"
-                      class="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white/90 hover:bg-white/10"
+                      class="rounded-md p-1.5 text-white/90 hover:bg-white/10"
+                      title="Scanner"
                     >
                       <lucide-angular [img]="icons.ScanLine" [size]="14"></lucide-angular>
-                      Scanner
                     </a>
                     <button
                       type="button"
-                      class="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white/90 hover:bg-red-500/80 disabled:opacity-50"
+                      class="rounded-md p-1.5 text-white/90 hover:bg-red-500/80 disabled:opacity-50"
                       title="Supprimer"
                       [disabled]="deletingId() === tile.event.id"
                       (click)="deleteEvent(tile.event, $event)"
                     >
                       <lucide-angular [img]="icons.Trash2" [size]="14"></lucide-angular>
-                      Supprimer
                     </button>
                   </div>
                 </article>
@@ -232,7 +255,7 @@ interface AttentionTile extends EventUrgency {
             <div class="grid grid-cols-2 gap-4 lg:grid-cols-3">
               @for (tile of activeTiles(); track tile.event.id) {
                 <article class="event-wall-tile card-hover-lift group aspect-[4/3]">
-                  <img [ngSrc]="tile.event.coverImageUrl" [alt]="tile.event.title" fill class="object-cover" />
+                  <img [ngSrc]="coverUrl(tile.event)" [alt]="tile.event.title" fill class="object-cover" />
                   <div class="photo-scrim absolute inset-0"></div>
 
                   <span
@@ -263,7 +286,7 @@ interface AttentionTile extends EventUrgency {
                     </div>
                   </div>
 
-                  <div class="event-wall-actionbar absolute inset-x-0 bottom-0 flex items-center justify-center gap-0.5 bg-charcoal/85 py-1.5 backdrop-blur-sm">
+                  <div class="event-wall-actionbar absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-center gap-0.5 bg-charcoal/85 py-1.5 backdrop-blur-sm">
                     <a
                       [routerLink]="['/organisateur/evenements', tile.event.id, 'modifier']"
                       class="rounded-md p-1.5 text-white/90 hover:bg-white/10"
@@ -279,6 +302,27 @@ interface AttentionTile extends EventUrgency {
                     >
                       <lucide-angular [img]="icons.Copy" [size]="14"></lucide-angular>
                     </button>
+                    <a
+                      [routerLink]="['/organisateur/evenements', tile.event.id, 'inscriptions']"
+                      class="rounded-md p-1.5 text-white/90 hover:bg-white/10"
+                      title="Inscriptions"
+                    >
+                      <lucide-angular [img]="icons.ClipboardList" [size]="14"></lucide-angular>
+                    </a>
+                    <a
+                      [routerLink]="['/organisateur/evenements', tile.event.id, 'billetterie']"
+                      class="rounded-md p-1.5 text-white/90 hover:bg-white/10"
+                      title="Billetterie"
+                    >
+                      <lucide-angular [img]="icons.TicketIcon" [size]="14"></lucide-angular>
+                    </a>
+                    <a
+                      [routerLink]="['/organisateur/evenements', tile.event.id, 'statistiques']"
+                      class="rounded-md p-1.5 text-white/90 hover:bg-white/10"
+                      title="Statistiques"
+                    >
+                      <lucide-angular [img]="icons.BarChart3" [size]="14"></lucide-angular>
+                    </a>
                     <a
                       [routerLink]="['/organisateur/scan', tile.event.id]"
                       class="rounded-md p-1.5 text-white/90 hover:bg-white/10"
@@ -311,10 +355,10 @@ interface AttentionTile extends EventUrgency {
             <div class="flex gap-3 overflow-x-auto pb-2">
               @for (tile of quietTiles(); track tile.event.id) {
                 <article
-                  class="event-wall-tile group aspect-square w-28 shrink-0 opacity-85 transition-opacity hover:opacity-100"
+                  class="event-wall-tile group aspect-square w-36 shrink-0 opacity-85 transition-opacity hover:opacity-100"
                   [title]="tile.event.title"
                 >
-                  <img [ngSrc]="tile.event.coverImageUrl" [alt]="tile.event.title" fill class="object-cover" />
+                  <img [ngSrc]="coverUrl(tile.event)" [alt]="tile.event.title" fill class="object-cover" />
                   <div class="photo-scrim absolute inset-0"></div>
 
                   <span
@@ -323,26 +367,62 @@ interface AttentionTile extends EventUrgency {
                     {{ statusFor(tile.event.status).label }}
                   </span>
 
-                  <div class="absolute inset-x-0 bottom-0 z-[1] p-2 pb-8">
+                  <div class="absolute inset-x-0 bottom-0 z-[1] p-2 pb-10">
                     <p class="truncate text-[10px] font-medium text-white">{{ tile.event.title }}</p>
                   </div>
 
-                  <div class="event-wall-actionbar absolute inset-x-0 bottom-0 z-[2] flex items-center justify-center gap-1 bg-charcoal/85 py-1.5 backdrop-blur-sm">
+                  <div class="event-wall-actionbar absolute inset-x-0 bottom-0 z-[2] flex flex-wrap items-center justify-center gap-0.5 bg-charcoal/85 py-1.5 backdrop-blur-sm">
                     <a
                       [routerLink]="['/organisateur/evenements', tile.event.id, 'modifier']"
-                      class="rounded-md p-1.5 text-white/90 hover:bg-white/10"
+                      class="rounded-md p-1 text-white/90 hover:bg-white/10"
                       title="Éditer"
                     >
-                      <lucide-angular [img]="icons.Pencil" [size]="14"></lucide-angular>
+                      <lucide-angular [img]="icons.Pencil" [size]="13"></lucide-angular>
                     </a>
                     <button
                       type="button"
-                      class="rounded-md p-1.5 text-white/90 hover:bg-red-500/80 disabled:opacity-50"
+                      class="rounded-md p-1 text-white/90 hover:bg-white/10"
+                      title="Dupliquer"
+                      (click)="duplicate(tile.event)"
+                    >
+                      <lucide-angular [img]="icons.Copy" [size]="13"></lucide-angular>
+                    </button>
+                    <a
+                      [routerLink]="['/organisateur/evenements', tile.event.id, 'inscriptions']"
+                      class="rounded-md p-1 text-white/90 hover:bg-white/10"
+                      title="Inscriptions"
+                    >
+                      <lucide-angular [img]="icons.ClipboardList" [size]="13"></lucide-angular>
+                    </a>
+                    <a
+                      [routerLink]="['/organisateur/evenements', tile.event.id, 'billetterie']"
+                      class="rounded-md p-1 text-white/90 hover:bg-white/10"
+                      title="Billetterie"
+                    >
+                      <lucide-angular [img]="icons.TicketIcon" [size]="13"></lucide-angular>
+                    </a>
+                    <a
+                      [routerLink]="['/organisateur/evenements', tile.event.id, 'statistiques']"
+                      class="rounded-md p-1 text-white/90 hover:bg-white/10"
+                      title="Statistiques"
+                    >
+                      <lucide-angular [img]="icons.BarChart3" [size]="13"></lucide-angular>
+                    </a>
+                    <a
+                      [routerLink]="['/organisateur/scan', tile.event.id]"
+                      class="rounded-md p-1 text-white/90 hover:bg-white/10"
+                      title="Scanner"
+                    >
+                      <lucide-angular [img]="icons.ScanLine" [size]="13"></lucide-angular>
+                    </a>
+                    <button
+                      type="button"
+                      class="rounded-md p-1 text-white/90 hover:bg-red-500/80 disabled:opacity-50"
                       title="Supprimer"
                       [disabled]="deletingId() === tile.event.id"
                       (click)="deleteEvent(tile.event, $event)"
                     >
-                      <lucide-angular [img]="icons.Trash2" [size]="14"></lucide-angular>
+                      <lucide-angular [img]="icons.Trash2" [size]="13"></lucide-angular>
                     </button>
                   </div>
                 </article>
@@ -494,11 +574,18 @@ export class OrganizerEventsListPage {
 
   private readonly ranked = computed(() => buildUrgencyList(this.filteredEvents(), this.occupancy()));
 
-  private readonly isQuiet = (item: EventUrgency): boolean =>
-    item.event.status === 'BROUILLON' ||
-    item.event.status === 'ARCHIVE' ||
-    item.event.status === 'ANNULE' ||
-    item.daysUntil < 0;
+  private readonly isQuiet = (item: EventUrgency): boolean => {
+    if (
+      item.event.status === 'BROUILLON' ||
+      item.event.status === 'ARCHIVE' ||
+      item.event.status === 'ANNULE'
+    ) {
+      return true;
+    }
+    // Keep events in "Actifs" until they are fully over (endAt), not just after startAt.
+    const endAt = new Date(item.event.endAt).getTime();
+    return Number.isFinite(endAt) && endAt < Date.now();
+  };
 
   protected readonly attentionTiles = computed<AttentionTile[]>(() => {
     const refundIds = this.pendingRefundEventIds();
@@ -511,6 +598,8 @@ export class OrganizerEventsListPage {
   });
 
   protected readonly activeTiles = computed<EventUrgency[]>(() => {
+    // Include all non-quiet events here so published upcoming events always appear,
+    // even when also highlighted in "À traiter maintenant".
     const heroIds = new Set(this.attentionTiles().map((t) => t.event.id));
     return this.ranked().filter((item) => !this.isQuiet(item) && !heroIds.has(item.event.id));
   });
@@ -548,6 +637,11 @@ export class OrganizerEventsListPage {
 
   protected statusFor(status: string) {
     return eventFunctionalStatus(status);
+  }
+
+  protected coverUrl(event: Event): string {
+    const url = event.coverImageUrl?.trim();
+    return url || FALLBACK_COVER;
   }
 
   protected statusColorFor(status: string): string {
@@ -608,7 +702,6 @@ export class OrganizerEventsListPage {
     if (item.event.status === 'EN_REVISION') return 'En révision';
     if (refundIds.has(item.event.id)) return 'Remboursements';
     if (item.fillRatio >= 0.85 && item.event.capacity > 0) return 'Presque complet';
-    if (item.daysUntil >= 0 && item.daysUntil <= 5) return 'Bientôt';
     return '';
   }
 }

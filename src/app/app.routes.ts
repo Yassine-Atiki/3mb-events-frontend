@@ -1,102 +1,71 @@
 import { Routes } from '@angular/router';
 
-import { authGuard, guestGuard, roleGuard } from './core/auth/auth.guard';
+import {
+  authGuard,
+  guestGuard,
+  organizationRequiredGuard,
+  organizationSetupGuard,
+  roleGuard
+} from './core/auth/auth.guard';
 
 export const routes: Routes = [
   {
-    path: '',
+    path: 'inscription/:token',
     loadComponent: () =>
-      import('./shared/layouts/public-shell/public-shell.component').then((m) => m.PublicShellComponent),
-    children: [
-      {
-        path: '',
-        loadComponent: () =>
-          import('./features/marketing/landing/landing-page.component').then((m) => m.LandingPageComponent)
-      },
-      {
-        path: 'evenements',
-        loadComponent: () => import('./features/catalog/event-list.page').then((m) => m.EventListPage)
-      },
-      {
-        path: 'evenements/:slug',
-        loadComponent: () => import('./features/catalog/event-detail.page').then((m) => m.EventDetailPage)
-      }
-    ]
+      import('./features/public/public-registration.page').then((m) => m.PublicRegistrationPage)
   },
   {
+    path: 'billet',
+    loadComponent: () =>
+      import('./features/public/public-ticket.page').then((m) => m.PublicTicketPage)
+  },
+  { path: '', redirectTo: 'auth/connexion', pathMatch: 'full' },
+  {
     path: 'auth',
-    canActivate: [guestGuard],
     loadComponent: () =>
       import('./shared/layouts/auth-shell/auth-shell.component').then((m) => m.AuthShellComponent),
     children: [
       { path: '', redirectTo: 'connexion', pathMatch: 'full' },
       {
-        path: 'inscription/organisateur',
-        loadComponent: () => import('./features/auth/register-organizer.page').then((m) => m.RegisterOrganizerPage)
-      },
-      {
-        path: 'inscription/participant',
+        path: 'organisation-requise',
+        canActivate: [authGuard, organizationSetupGuard],
         loadComponent: () =>
-          import('./features/auth/register-participant.page').then((m) => m.RegisterParticipantPage)
+          import('./features/auth/organization-required.page').then((m) => m.OrganizationRequiredPage)
       },
       {
-        path: 'connexion',
-        loadComponent: () => import('./features/auth/login.page').then((m) => m.LoginPage)
-      },
-      {
-        path: 'mot-de-passe-oublie',
-        loadComponent: () => import('./features/auth/forgot-password.page').then((m) => m.ForgotPasswordPage)
-      },
-      {
-        path: 'reinitialiser/:token',
-        loadComponent: () => import('./features/auth/reset-password.page').then((m) => m.ResetPasswordPage)
-      }
-    ]
-  },
-  {
-    path: 'app',
-    canActivate: [authGuard, roleGuard('PARTICIPANT')],
-    loadComponent: () => import('./shared/layouts/app-shell/app-shell.component').then((m) => m.AppShellComponent),
-    children: [
-      { path: '', redirectTo: 'tableau-de-bord', pathMatch: 'full' },
-      {
-        path: 'decouvrir',
-        loadComponent: () => import('./features/catalog/event-list.page').then((m) => m.EventListPage)
-      },
-      {
-        path: 'decouvrir/:slug',
-        loadComponent: () => import('./features/catalog/event-detail.page').then((m) => m.EventDetailPage)
-      },
-      {
-        path: 'tableau-de-bord',
-        loadComponent: () => import('./features/participant/dashboard.page').then((m) => m.DashboardPage)
-      },
-      {
-        path: 'mes-inscriptions',
-        loadComponent: () =>
-          import('./features/participant/my-registrations.page').then((m) => m.MyRegistrationsPage)
-      },
-      {
-        path: 'billets/:id',
-        loadComponent: () => import('./features/participant/ticket-detail.page').then((m) => m.TicketDetailPage)
-      },
-      {
-        path: 'reservation/:eventId',
-        loadComponent: () => import('./features/participant/reservation.page').then((m) => m.ReservationPage)
-      },
-      {
-        path: 'profil',
-        loadComponent: () => import('./features/participant/profile.page').then((m) => m.ProfilePage)
-      },
-      {
-        path: 'remboursements',
-        loadComponent: () => import('./features/participant/refunds.page').then((m) => m.RefundsPage)
+        path: '',
+        canActivate: [guestGuard],
+        children: [
+          {
+            path: 'inscription/organisation',
+            loadComponent: () =>
+              import('./features/auth/register-organization.page').then((m) => m.RegisterOrganizationPage)
+          },
+          {
+            path: 'connexion',
+            loadComponent: () => import('./features/auth/login.page').then((m) => m.LoginPage)
+          },
+          {
+            path: '2fa',
+            loadComponent: () => import('./features/auth/two-factor.page').then((m) => m.TwoFactorPage)
+          },
+          {
+            path: 'mot-de-passe-oublie',
+            loadComponent: () =>
+              import('./features/auth/forgot-password.page').then((m) => m.ForgotPasswordPage)
+          },
+          {
+            path: 'reinitialiser/:token',
+            loadComponent: () =>
+              import('./features/auth/reset-password.page').then((m) => m.ResetPasswordPage)
+          }
+        ]
       }
     ]
   },
   {
     path: 'organisateur',
-    canActivate: [authGuard, roleGuard('ORGANIZER')],
+    canActivate: [authGuard, roleGuard('ORGANIZER'), organizationRequiredGuard],
     loadComponent: () => import('./shared/layouts/app-shell/app-shell.component').then((m) => m.AppShellComponent),
     children: [
       { path: '', redirectTo: 'tableau-de-bord', pathMatch: 'full' },
@@ -147,8 +116,16 @@ export const routes: Routes = [
         loadComponent: () => import('./features/organizer/refunds.page').then((m) => m.OrganizerRefundsPage)
       },
       {
+        path: 'lieux',
+        loadComponent: () => import('./features/organizer/venues.page').then((m) => m.OrganizerVenuesPage)
+      },
+      {
+        path: 'categories',
+        loadComponent: () => import('./features/organizer/categories.page').then((m) => m.OrganizerCategoriesPage)
+      },
+      {
         path: 'profil',
-        loadComponent: () => import('./features/participant/profile.page').then((m) => m.ProfilePage)
+        loadComponent: () => import('./features/account/profile/profile.page').then((m) => m.ProfilePage)
       }
     ]
   },
@@ -167,24 +144,8 @@ export const routes: Routes = [
         loadComponent: () => import('./features/admin/users.page').then((m) => m.AdminUsersPage)
       },
       {
-        path: 'moderation',
-        loadComponent: () => import('./features/admin/moderation.page').then((m) => m.AdminModerationPage)
-      },
-      {
-        path: 'categories',
-        loadComponent: () => import('./features/admin/categories.page').then((m) => m.AdminCategoriesPage)
-      },
-      {
-        path: 'lieux',
-        loadComponent: () => import('./features/admin/venues.page').then((m) => m.AdminVenuesPage)
-      },
-      {
         path: 'journal',
         loadComponent: () => import('./features/admin/audit-log.page').then((m) => m.AdminAuditLogPage)
-      },
-      {
-        path: 'remboursements',
-        loadComponent: () => import('./features/admin/refunds.page').then((m) => m.AdminRefundsPage)
       },
       {
         path: 'rapports',
@@ -192,7 +153,7 @@ export const routes: Routes = [
       },
       {
         path: 'profil',
-        loadComponent: () => import('./features/participant/profile.page').then((m) => m.ProfilePage)
+        loadComponent: () => import('./features/account/profile/profile.page').then((m) => m.ProfilePage)
       }
     ]
   },

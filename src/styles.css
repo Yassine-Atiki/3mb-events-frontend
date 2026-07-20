@@ -1350,6 +1350,12 @@ app-splash-cursor.auth-right-panel .splash-cursor-content {
   color: #d4fff3;
 }
 
+.organizer-live-badge--idle {
+  border-color: color-mix(in srgb, white 22%, transparent);
+  background: color-mix(in srgb, white 10%, transparent);
+  color: color-mix(in srgb, white 78%, transparent);
+}
+
 .organizer-live-badge-dot {
   width: 0.45rem;
   height: 0.45rem;
@@ -1835,17 +1841,15 @@ app-splash-cursor.auth-right-panel .splash-cursor-content {
 }
 
 .organizer-row-actions {
-  opacity: 0;
-  transform: translateX(4px);
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
+  opacity: 1;
+  transform: none;
 }
 
-.organizer-dense-table tbody tr:hover .organizer-row-actions,
-.organizer-dense-table tbody tr:focus-within .organizer-row-actions {
-  opacity: 1;
-  transform: translateX(0);
+.organizer-dense-table th.w-28,
+.organizer-dense-table td.text-right {
+  width: 7.5rem;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
 .scan-viewfinder {
@@ -3177,7 +3181,26 @@ app-ticket-card {
   inset: 0 auto auto 0;
   right: 0;
   height: 3px;
-  background: linear-gradient(90deg, #8B5CF6, #F59E0B);
+  background: linear-gradient(90deg, var(--color-brand-teal), var(--color-brand-forest, #1e4d3c));
+}
+
+.participant-profile-security-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.participant-profile-2fa-row {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin-top: 0.15rem;
+}
+
+.participant-profile-2fa {
+  width: 100%;
+  max-width: 28rem;
 }
 
 /* — Détail billet participant — */

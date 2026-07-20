@@ -3,6 +3,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 
 import { AuthResponse } from '../api/auth.service';
 import { AuthStore } from './auth.store';
+import { needsOrganizationSetup } from './organization.util';
 
 /**
  * Shared post-login/register/Google flow: persist session and redirect by role / returnUrl.
@@ -19,6 +20,11 @@ export class AuthSessionService {
   ): void {
     const { user, accessToken, refreshToken } = response;
     this.authStore.setSession(user, accessToken, refreshToken);
+
+    if (needsOrganizationSetup(user)) {
+      void this.router.navigate(['/auth/organisation-requise']);
+      return;
+    }
 
     const returnUrl =
       options?.returnUrl ??
@@ -39,7 +45,7 @@ export class AuthSessionService {
         void this.router.navigate(['/admin/tableau-de-bord']);
         break;
       default:
-        void this.router.navigate(['/app/tableau-de-bord']);
+        void this.router.navigate(['/403']);
     }
   }
 }
