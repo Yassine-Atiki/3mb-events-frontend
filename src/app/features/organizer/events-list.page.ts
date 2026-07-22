@@ -1,4 +1,3 @@
-import { NgOptimizedImage } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
@@ -60,7 +59,6 @@ interface AttentionTile extends EventUrgency {
   changeDetection: ChangeDetectionStrategy.OnPush,
   standalone: true,
   imports: [
-    NgOptimizedImage,
     ReactiveFormsModule,
     RouterLink,
     LucideAngularModule,
@@ -143,11 +141,9 @@ interface AttentionTile extends EventUrgency {
               @for (tile of attentionTiles(); track tile.event.id) {
                 <article class="event-wall-tile card-hover-lift group min-h-[220px]">
                   <img
-                    [ngSrc]="coverUrl(tile.event)"
+                    [src]="coverUrl(tile.event)"
                     [alt]="tile.event.title"
-                    fill
-                    priority
-                    class="object-cover"
+                    class="absolute inset-0 h-full w-full object-cover"
                   />
                   <div class="photo-scrim absolute inset-0"></div>
 
@@ -165,12 +161,15 @@ interface AttentionTile extends EventUrgency {
                   <div class="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-5">
                     <div class="min-w-0">
                       <h3 class="truncate text-lg font-bold text-white">{{ tile.event.title }}</h3>
-                      <div class="mt-1.5 flex items-center gap-2">
+                      <div class="mt-1.5 flex flex-wrap items-center gap-2">
                         <span
                           class="h-2 w-2 rounded-full"
                           [style.background-color]="statusColorFor(tile.event.status)"
                         ></span>
                         <span class="text-xs font-medium text-white/85">{{ statusFor(tile.event.status).label }}</span>
+                        @if (priceLabel(tile.event); as price) {
+                          <span class="event-price-pill">{{ price }}</span>
+                        }
                       </div>
                     </div>
                     <div class="shrink-0 rounded-full bg-charcoal/45 p-1 backdrop-blur-sm">
@@ -255,7 +254,11 @@ interface AttentionTile extends EventUrgency {
             <div class="grid grid-cols-2 gap-4 lg:grid-cols-3">
               @for (tile of activeTiles(); track tile.event.id) {
                 <article class="event-wall-tile card-hover-lift group aspect-[4/3]">
-                  <img [ngSrc]="coverUrl(tile.event)" [alt]="tile.event.title" fill class="object-cover" />
+                  <img
+                    [src]="coverUrl(tile.event)"
+                    [alt]="tile.event.title"
+                    class="absolute inset-0 h-full w-full object-cover"
+                  />
                   <div class="photo-scrim absolute inset-0"></div>
 
                   <span
@@ -277,12 +280,15 @@ interface AttentionTile extends EventUrgency {
 
                   <div class="absolute inset-x-0 bottom-0 p-3">
                     <h3 class="truncate text-sm font-bold text-white">{{ tile.event.title }}</h3>
-                    <div class="mt-1 flex items-center gap-1.5">
+                    <div class="mt-1 flex flex-wrap items-center gap-1.5">
                       <span
                         class="h-1.5 w-1.5 rounded-full"
                         [style.background-color]="statusColorFor(tile.event.status)"
                       ></span>
                       <span class="text-[11px] font-medium text-white/80">{{ statusFor(tile.event.status).label }}</span>
+                      @if (priceLabel(tile.event); as price) {
+                        <span class="event-price-pill event-price-pill--sm">{{ price }}</span>
+                      }
                     </div>
                   </div>
 
@@ -358,7 +364,11 @@ interface AttentionTile extends EventUrgency {
                   class="event-wall-tile group aspect-square w-36 shrink-0 opacity-85 transition-opacity hover:opacity-100"
                   [title]="tile.event.title"
                 >
-                  <img [ngSrc]="coverUrl(tile.event)" [alt]="tile.event.title" fill class="object-cover" />
+                  <img
+                    [src]="coverUrl(tile.event)"
+                    [alt]="tile.event.title"
+                    class="absolute inset-0 h-full w-full object-cover"
+                  />
                   <div class="photo-scrim absolute inset-0"></div>
 
                   <span
@@ -369,6 +379,9 @@ interface AttentionTile extends EventUrgency {
 
                   <div class="absolute inset-x-0 bottom-0 z-[1] p-2 pb-10">
                     <p class="truncate text-[10px] font-medium text-white">{{ tile.event.title }}</p>
+                    @if (priceLabel(tile.event); as price) {
+                      <span class="event-price-pill event-price-pill--xs mt-1">{{ price }}</span>
+                    }
                   </div>
 
                   <div class="event-wall-actionbar absolute inset-x-0 bottom-0 z-[2] flex flex-wrap items-center justify-center gap-0.5 bg-charcoal/85 py-1.5 backdrop-blur-sm">
@@ -439,6 +452,7 @@ interface AttentionTile extends EventUrgency {
                 <th>Événement</th>
                 <th>Date</th>
                 <th>Lieu</th>
+                <th>Prix</th>
                 <th>Capacité</th>
                 <th>Statut</th>
                 <th class="w-48"></th>
@@ -457,6 +471,13 @@ interface AttentionTile extends EventUrgency {
                   </td>
                   <td class="font-mono text-xs tabular-nums text-text-secondary">{{ formatDate(event.startAt) }}</td>
                   <td class="text-text-secondary">{{ event.city }}</td>
+                  <td>
+                    @if (priceLabel(event); as price) {
+                      <span class="event-price-pill event-price-pill--table">{{ price }}</span>
+                    } @else {
+                      <span class="text-xs text-text-secondary">—</span>
+                    }
+                  </td>
                   <td class="font-mono text-xs tabular-nums">{{ event.capacity }}</td>
                   <td>
                     <app-status-dot [label]="statusFor(event.status).label" [tone]="statusFor(event.status).tone" />
@@ -642,6 +663,12 @@ export class OrganizerEventsListPage {
   protected coverUrl(event: Event): string {
     const url = event.coverImageUrl?.trim();
     return url || FALLBACK_COVER;
+  }
+
+  protected priceLabel(event: Event): string | null {
+    if (event.isFree) return 'Gratuit';
+    if (event.priceFrom > 0) return `À partir de ${event.priceFrom} MAD`;
+    return null;
   }
 
   protected statusColorFor(status: string): string {

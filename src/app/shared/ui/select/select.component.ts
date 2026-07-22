@@ -240,26 +240,30 @@ export class SelectComponent implements ControlValueAccessor {
     const rect = trigger.getBoundingClientRect();
     const panelMaxHeight = 256;
     const gap = 6;
-    const minPanelHeight = 96; // always room for at least ~2 options (PDF + Excel)
+    const minPanelHeight = 96;
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
     const openUp = spaceBelow < minPanelHeight + gap && spaceAbove > spaceBelow;
 
+    // Absolute within the trigger wrapper — avoids broken fixed coords when an
+    // ancestor has transform (e.g. page enter animations).
     if (openUp) {
       this.panelStyle.set({
-        position: 'fixed',
-        left: `${rect.left}px`,
-        width: `${rect.width}px`,
-        bottom: `${window.innerHeight - rect.top + gap}px`,
+        position: 'absolute',
+        left: '0',
+        width: '100%',
+        top: 'auto',
+        bottom: `${trigger.offsetHeight + gap}px`,
         'max-height': `${Math.max(minPanelHeight, Math.min(panelMaxHeight, spaceAbove - gap - 8))}px`,
         'z-index': '1200'
       });
     } else {
       this.panelStyle.set({
-        position: 'fixed',
-        left: `${rect.left}px`,
-        width: `${rect.width}px`,
-        top: `${rect.bottom + gap}px`,
+        position: 'absolute',
+        left: '0',
+        width: '100%',
+        top: `${trigger.offsetHeight + gap}px`,
+        bottom: 'auto',
         'max-height': `${Math.max(minPanelHeight, Math.min(panelMaxHeight, spaceBelow - gap - 8))}px`,
         'z-index': '1200'
       });

@@ -42,6 +42,7 @@ import {
 import {
   computeAdminStats,
   computeEventStats,
+  computeEventAudit,
   computeOrganizerStats,
   createTicketsForRegistration,
   findCategoryById,
@@ -1080,7 +1081,7 @@ function handleGetPublicRegistrationInfo(ctx: RouteContext) {
   };
 }
 
-function handlePublicRegister(ctx: RouteContext): Registration {
+function handlePublicRegister(ctx: RouteContext): Registration & { checkoutUrl?: string | null } {
   const event = findEventByPublicToken(ctx.params['token']);
   if (!event) {
     throw new MockApiError(404, "Lien d'inscription invalide ou expiré.");
@@ -1104,13 +1105,34 @@ function handlePublicRegister(ctx: RouteContext): Registration {
     throw new MockApiError(404, 'Type de billet introuvable.');
   }
 
-  const quantity = payload.quantity && payload.quantity > 0 ? payload.quantity : 1;
+  const quantity = 1;
   const available = ticketType.quantityTotal - ticketType.quantitySold;
   if (quantity > available) {
     throw new MockApiError(409, 'Places insuffisantes pour ce type de billet.', 'SOLD_OUT');
   }
 
   const email = payload.participantEmail.trim().toLowerCase();
+  const existingPending = mockRegistrations.find(
+    (registration) =>
+      registration.eventId === event.id &&
+      registration.participantEmail.toLowerCase() === email &&
+      registration.status === 'PENDING'
+  );
+  if (existingPending) {
+    const sessionId = generateId('cs_test');
+    mockPaymentIntents.push({
+      id: generateId('pi'),
+      registrationId: existingPending.id,
+      amount: existingPending.totalPrice,
+      currency: existingPending.currency,
+      status: 'REQUIRES_PAYMENT',
+      clientSecret: sessionId,
+      createdAt: new Date().toISOString()
+    });
+    const checkoutUrl = `${window.location.origin}/inscription/${ctx.params['token']}?session_id=${sessionId}`;
+    return { ...existingPending, checkoutUrl };
+  }
+
   const alreadyRegistered = mockRegistrations.some(
     (registration) =>
       registration.eventId === event.id &&
@@ -1127,6 +1149,7 @@ function handlePublicRegister(ctx: RouteContext): Registration {
   }
 
   const now = new Date().toISOString();
+  const requiresPayment = ticketType.price > 0;
   const registration: Registration = {
     id: generateId('reg'),
     eventId: event.id,
@@ -1135,7 +1158,8 @@ function handlePublicRegister(ctx: RouteContext): Registration {
     participantEmail: email,
     participantPhone: payload.participantPhone?.trim() || undefined,
     ticketTypeId: ticketType.id,
-    status: event.isFree ? 'CONFIRMED' : 'PENDING',
+    status: requiresPayment ? 'PENDING' : 'CONFIRMED',
+    source: 'PUBLIC',
     quantity,
     totalPrice: ticketType.price * quantity,
     currency: ticketType.currency,
@@ -1145,6 +1169,50 @@ function handlePublicRegister(ctx: RouteContext): Registration {
   mockRegistrations.push(registration);
   ticketType.quantitySold += quantity;
   if (registration.status === 'CONFIRMED') {
+    createTicketsForRegistration(registration);
+  }
+
+  if (!requiresPayment) {
+    return { ...registration, checkoutUrl: null };
+  }
+
+  const sessionId = generateId('cs_test');
+  mockPaymentIntents.push({
+    id: generateId('pi'),
+    registrationId: registration.id,
+    amount: registration.totalPrice,
+    currency: registration.currency,
+    status: 'REQUIRES_PAYMENT',
+    clientSecret: sessionId,
+    createdAt: now
+  });
+
+  // Mock Checkout: bounce back to the success URL with session_id (no real Stripe).
+  const checkoutUrl = `${window.location.origin}/inscription/${ctx.params['token']}?session_id=${sessionId}`;
+  return { ...registration, checkoutUrl };
+}
+
+function handlePublicCheckoutConfirm(ctx: RouteContext): Registration {
+  const event = findEventByPublicToken(ctx.params['token']);
+  if (!event) {
+    throw new MockApiError(404, "Lien d'inscription invalide ou expiré.");
+  }
+  const sessionId = ctx.query.get('session_id');
+  if (!sessionId) {
+    throw new MockApiError(400, 'session_id is required', 'VALIDATION_ERROR');
+  }
+  const intent = mockPaymentIntents.find((item) => item.clientSecret === sessionId);
+  if (!intent) {
+    throw new MockApiError(404, 'Payment session not found');
+  }
+  const registration = findRegistrationById(intent.registrationId);
+  if (!registration || registration.eventId !== event.id) {
+    throw new MockApiError(400, 'Payment session does not match this registration link', 'SESSION_MISMATCH');
+  }
+  intent.status = 'SUCCEEDED';
+  if (registration.status === 'PENDING') {
+    registration.status = 'CONFIRMED';
+    registration.updatedAt = new Date().toISOString();
     createTicketsForRegistration(registration);
   }
   return registration;
@@ -1200,9 +1268,26 @@ function handleCreateRegistration(ctx: RouteContext): Registration {
   if (!ticketType) {
     throw new MockApiError(404, 'Type de billet introuvable.');
   }
+  const quantity = 1;
   const available = ticketType.quantityTotal - ticketType.quantitySold;
-  if (payload.quantity > available) {
+  if (quantity > available) {
     throw new MockApiError(409, 'Places insuffisantes pour ce type de billet.', 'SOLD_OUT');
+  }
+
+  const email = payload.participantEmail.trim().toLowerCase();
+  const alreadyRegistered = mockRegistrations.some(
+    (registration) =>
+      registration.eventId === event.id &&
+      registration.participantEmail.toLowerCase() === email &&
+      registration.status !== 'CANCELLED' &&
+      registration.status !== 'REFUNDED'
+  );
+  if (alreadyRegistered) {
+    throw new MockApiError(
+      409,
+      'Ce participant est déjà inscrit à cet événement avec cet email.',
+      'ALREADY_REGISTERED'
+    );
   }
 
   const now = new Date().toISOString();
@@ -1211,18 +1296,19 @@ function handleCreateRegistration(ctx: RouteContext): Registration {
     eventId: event.id,
     participantFirstName: payload.participantFirstName.trim(),
     participantLastName: payload.participantLastName.trim(),
-    participantEmail: payload.participantEmail.trim(),
+    participantEmail: email,
     participantPhone: payload.participantPhone?.trim() || undefined,
     ticketTypeId: ticketType.id,
     status: 'CONFIRMED',
-    quantity: payload.quantity,
-    totalPrice: ticketType.price * payload.quantity,
+    source: payload.source === 'IMPORT' ? 'IMPORT' : 'MANUAL',
+    quantity,
+    totalPrice: 0,
     currency: ticketType.currency,
     createdAt: now,
     updatedAt: now
   };
   mockRegistrations.push(registration);
-  ticketType.quantitySold += payload.quantity;
+  ticketType.quantitySold += quantity;
   createTicketsForRegistration(registration);
   return registration;
 }
@@ -1299,7 +1385,10 @@ function handleChangeRegistrationTicketType(ctx: RouteContext): Registration {
     throw new MockApiError(400, 'Type de billet invalide.', 'VALIDATION_ERROR');
   }
   registration.ticketTypeId = ticketType.id;
-  registration.totalPrice = ticketType.price * registration.quantity;
+  registration.totalPrice =
+    registration.source === 'MANUAL' || registration.source === 'IMPORT'
+      ? 0
+      : ticketType.price * registration.quantity;
   registration.currency = ticketType.currency;
   registration.updatedAt = new Date().toISOString();
   return registration;
@@ -1790,6 +1879,15 @@ function handleEventStats(ctx: RouteContext): OrganizerStats {
   return computeEventStats(event.id);
 }
 
+function handleEventAudit(ctx: RouteContext): ReturnType<typeof computeEventAudit> {
+  const event = findEventById(ctx.params['eventId']);
+  if (!event) {
+    throw new MockApiError(404, 'Événement introuvable.');
+  }
+  requireEventOwnerOrAdmin(ctx.currentUser, event);
+  return computeEventAudit(event.id);
+}
+
 /* -------------------------------------------------------------------------- */
 /* Route table                                                                */
 /* -------------------------------------------------------------------------- */
@@ -1853,6 +1951,11 @@ const routes: MockRoute[] = [
   // PUBLIC REGISTRATION
   { method: 'GET', pattern: '/public/registrations/:token', handler: handleGetPublicRegistrationInfo },
   { method: 'POST', pattern: '/public/registrations/:token', status: 201, handler: handlePublicRegister },
+  {
+    method: 'GET',
+    pattern: '/public/registrations/:token/checkout/confirm',
+    handler: handlePublicCheckoutConfirm
+  },
 
   // REGISTRATIONS
   { method: 'DELETE', pattern: '/registrations/:id', handler: handleDeleteRegistration },
@@ -1892,6 +1995,7 @@ const routes: MockRoute[] = [
   // STATS
   { method: 'GET', pattern: '/stats/organizer/:organizerId', handler: handleOrganizerStats },
   { method: 'GET', pattern: '/stats/admin', handler: handleAdminStats },
+  { method: 'GET', pattern: '/stats/events/:eventId/audit', handler: handleEventAudit },
   { method: 'GET', pattern: '/stats/events/:eventId', handler: handleEventStats }
 ];
 

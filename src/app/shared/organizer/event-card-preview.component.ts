@@ -54,11 +54,7 @@ export interface EventPreviewData {
           </span>
         }
         @if (priceLabel(); as price) {
-          <span
-            class="absolute bottom-2 right-2 rounded-md bg-charcoal/80 px-2 py-1 font-mono text-[11px] font-medium tabular-nums text-white backdrop-blur-sm"
-          >
-            {{ price }}
-          </span>
+          <span class="event-price-pill absolute bottom-2 right-2">{{ price }}</span>
         }
       </div>
 

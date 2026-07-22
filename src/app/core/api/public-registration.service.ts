@@ -23,7 +23,13 @@ export interface PublicCreateRegistrationPayload {
   participantEmail: string;
   participantPhone?: string;
   ticketTypeId?: string;
-  quantity?: number;
+  /** Always 1 — one participant = one registration. */
+  quantity?: 1;
+}
+
+/** Registration create result — checkoutUrl present when payment is required. */
+export interface PublicRegistrationResult extends Registration {
+  checkoutUrl?: string | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -35,7 +41,13 @@ export class PublicRegistrationService {
     return this.http.get<PublicRegistrationInfo>(`${this.baseUrl}/${token}`);
   }
 
-  register(token: string, payload: PublicCreateRegistrationPayload): Observable<Registration> {
-    return this.http.post<Registration>(`${this.baseUrl}/${token}`, payload);
+  register(token: string, payload: PublicCreateRegistrationPayload): Observable<PublicRegistrationResult> {
+    return this.http.post<PublicRegistrationResult>(`${this.baseUrl}/${token}`, payload);
+  }
+
+  confirmCheckout(token: string, sessionId: string): Observable<Registration> {
+    return this.http.get<Registration>(`${this.baseUrl}/${token}/checkout/confirm`, {
+      params: { session_id: sessionId }
+    });
   }
 }

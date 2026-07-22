@@ -298,6 +298,7 @@ interface Bucket {
               <h2 class="admin-bento-title">Spectre des opérations</h2>
               <div class="mt-5">
                 <app-admin-status-spectrum
+                  variant="ranked"
                   [points]="actionChart()"
                   [labelMap]="actionLabels"
                   [colorMap]="actionColors"

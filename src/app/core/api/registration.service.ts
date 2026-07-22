@@ -3,12 +3,15 @@ import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
-import { PageRequest, PageResponse, Registration, RegistrationStatus } from '../models';
+import { PageRequest, PageResponse, Registration, RegistrationSource, RegistrationStatus } from '../models';
 
 export interface CreateRegistrationRequest {
   eventId: string;
   ticketTypeId: string;
-  quantity: number;
+  /** Always 1 — one participant = one registration. */
+  quantity?: 1;
+  /** MANUAL (default) or IMPORT — not a public sale. */
+  source?: Exclude<RegistrationSource, 'PUBLIC'>;
   participantFirstName: string;
   participantLastName: string;
   participantEmail: string;

@@ -6,7 +6,8 @@ export interface ParsedParticipantRow {
   lastName: string;
   email: string;
   phone?: string;
-  quantity: number;
+  /** Always 1 — one participant = one registration. */
+  quantity: 1;
   /** Optional ticket type name from the sheet (matched later). */
   ticketTypeName?: string;
   error?: string;
@@ -18,7 +19,7 @@ export interface ParseParticipantSpreadsheetResult {
   errorCount: number;
 }
 
-const HEADER_ALIASES: Record<string, keyof Omit<ParsedParticipantRow, 'rowNumber' | 'error'>> = {
+const HEADER_ALIASES: Record<string, keyof Omit<ParsedParticipantRow, 'rowNumber' | 'error' | 'quantity'>> = {
   prenom: 'firstName',
   'prénom': 'firstName',
   firstname: 'firstName',
@@ -39,10 +40,6 @@ const HEADER_ALIASES: Record<string, keyof Omit<ParsedParticipantRow, 'rowNumber
   'tél': 'phone',
   phone: 'phone',
   mobile: 'phone',
-  quantite: 'quantity',
-  quantité: 'quantity',
-  qty: 'quantity',
-  quantity: 'quantity',
   billet: 'ticketTypeName',
   ticket: 'ticketTypeName',
   tickettype: 'ticketTypeName',
@@ -71,7 +68,8 @@ function isValidEmail(email: string): boolean {
 
 /**
  * Parse an Excel (.xlsx/.xls) or CSV file into participant rows.
- * Expected columns (FR/EN): Prénom, Nom, Email, Téléphone?, Quantité?, Billet?
+ * Expected columns (FR/EN): Prénom, Nom, Email, Téléphone?, Billet?
+ * One row = one participant (quantity always 1). Quantité column is ignored if present.
  */
 export async function parseParticipantSpreadsheet(file: File): Promise<ParseParticipantSpreadsheetResult> {
   const buffer = await file.arrayBuffer();
@@ -92,7 +90,7 @@ export async function parseParticipantSpreadsheet(file: File): Promise<ParsePart
   }
 
   const sampleKeys = Object.keys(rawRows[0] ?? {});
-  const fieldByHeader = new Map<string, keyof Omit<ParsedParticipantRow, 'rowNumber' | 'error'>>();
+  const fieldByHeader = new Map<string, keyof Omit<ParsedParticipantRow, 'rowNumber' | 'error' | 'quantity'>>();
   for (const key of sampleKeys) {
     const normalized = normalizeHeader(key);
     const field = HEADER_ALIASES[normalized];
@@ -104,22 +102,19 @@ export async function parseParticipantSpreadsheet(file: File): Promise<ParsePart
   const hasEmail = [...fieldByHeader.values()].includes('email');
   if (!hasFirst || !hasLast || !hasEmail) {
     throw new Error(
-      'Colonnes requises manquantes. Attendu : Prénom, Nom, Email (optionnel : Téléphone, Quantité, Billet).'
+      'Colonnes requises manquantes. Attendu : Prénom, Nom, Email (optionnel : Téléphone, Billet).'
     );
   }
 
+  const seenEmails = new Set<string>();
   const rows: ParsedParticipantRow[] = rawRows.map((raw, index) => {
     const mapped: Partial<ParsedParticipantRow> = {
-      rowNumber: index + 2,
-      quantity: 1
+      rowNumber: index + 2
     };
 
     for (const [header, field] of fieldByHeader.entries()) {
       const value = cellString(raw[header]);
-      if (field === 'quantity') {
-        const qty = Number(value.replace(',', '.'));
-        mapped.quantity = Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 1;
-      } else if (field === 'phone') {
+      if (field === 'phone') {
         mapped.phone = value || undefined;
       } else if (field === 'ticketTypeName') {
         mapped.ticketTypeName = value || undefined;
@@ -131,13 +126,16 @@ export async function parseParticipantSpreadsheet(file: File): Promise<ParsePart
     const firstName = (mapped.firstName ?? '').trim();
     const lastName = (mapped.lastName ?? '').trim();
     const email = (mapped.email ?? '').trim().toLowerCase();
-    const quantity = mapped.quantity && mapped.quantity > 0 ? mapped.quantity : 1;
 
     let error: string | undefined;
     if (!firstName || !lastName || !email) {
       error = 'Prénom, nom et e-mail sont obligatoires.';
     } else if (!isValidEmail(email)) {
       error = 'E-mail invalide.';
+    } else if (seenEmails.has(email)) {
+      error = 'Email déjà présent dans le fichier.';
+    } else {
+      seenEmails.add(email);
     }
 
     return {
@@ -146,7 +144,7 @@ export async function parseParticipantSpreadsheet(file: File): Promise<ParsePart
       lastName,
       email,
       phone: mapped.phone,
-      quantity,
+      quantity: 1,
       ticketTypeName: mapped.ticketTypeName,
       error
     };
@@ -163,7 +161,7 @@ export async function parseParticipantSpreadsheet(file: File): Promise<ParsePart
 /** Build and download a starter Excel template for participant import (headers only). */
 export function downloadParticipantImportTemplate(): void {
   const worksheet = XLSX.utils.aoa_to_sheet([
-    ['Prénom', 'Nom', 'Email', 'Téléphone', 'Quantité', 'Billet']
+    ['Prénom', 'Nom', 'Email', 'Téléphone', 'Billet']
   ]);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Participants');
@@ -180,6 +178,7 @@ export interface RegistrationCsvRow {
   totalPrice: number;
   currency: string;
   status: string;
+  source?: string;
   createdAt: string;
   checkedInAt?: string;
 }
@@ -190,6 +189,26 @@ function csvEscape(value: string | number | undefined | null): string {
     return `"${raw.replace(/"/g, '""')}"`;
   }
   return raw;
+}
+
+function csvTotalAmount(row: RegistrationCsvRow): string {
+  if (row.source === 'MANUAL' || row.source === 'IMPORT') {
+    return '—';
+  }
+  if (row.totalPrice == null || Number(row.totalPrice) <= 0) {
+    return '—';
+  }
+  return String(row.totalPrice);
+}
+
+function csvTotalCurrency(row: RegistrationCsvRow): string {
+  if (row.source === 'MANUAL' || row.source === 'IMPORT') {
+    return '';
+  }
+  if (row.totalPrice == null || Number(row.totalPrice) <= 0) {
+    return '';
+  }
+  return row.currency;
 }
 
 function slugifyFilePart(value: string): string {
@@ -233,7 +252,6 @@ export function downloadRegistrationsCsv(
     'Email',
     'Téléphone',
     'Billet',
-    'Quantité',
     'Montant',
     'Devise',
     'Statut',
@@ -250,9 +268,8 @@ export function downloadRegistrationsCsv(
         csvEscape(row.participantEmail),
         csvEscape(row.participantPhone ?? ''),
         csvEscape(options.ticketTypeNames[row.ticketTypeId] ?? row.ticketTypeId),
-        csvEscape(row.quantity),
-        csvEscape(row.totalPrice),
-        csvEscape(row.currency),
+        csvEscape(csvTotalAmount(row)),
+        csvEscape(csvTotalCurrency(row)),
         csvEscape(options.statusLabel(row.status)),
         excelTextCell(formatCsvDate(row.createdAt)),
         excelTextCell(formatCsvDate(row.checkedInAt))

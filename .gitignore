@@ -43,6 +43,12 @@ __screenshots__/
 .DS_Store
 Thumbs.db
 
+# Env / secrets — never commit
+.env
+.env.local
+.env.*.local
+!.env.example
+
 # AI Tools
 .claude/
 .cursor/

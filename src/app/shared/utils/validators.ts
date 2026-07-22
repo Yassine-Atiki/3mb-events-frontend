@@ -39,6 +39,9 @@ export function isGalleryPageUrl(url: string): boolean {
 export function isDirectImageUrl(url: string): boolean {
   const value = url.trim();
   if (!value) return false;
+  if (/^data:image\/(png|jpe?g|gif|webp|avif|bmp|svg\+xml);base64,/i.test(value)) {
+    return true;
+  }
   if (!/^https?:\/\//i.test(value)) return false;
   return !isGalleryPageUrl(value);
 }
@@ -47,6 +50,13 @@ export function coverImageUrlValidator(): ValidatorFn {
   return (control: AbstractControl): ValidationErrors | null => {
     const value = (control.value ?? '').trim();
     if (!value) return null;
+
+    if (/^data:image\//i.test(value)) {
+      if (!/^data:image\/(png|jpe?g|gif|webp|avif|bmp|svg\+xml);base64,/i.test(value)) {
+        return { coverImageUrl: 'Format d’image non supporté. Utilisez JPG, PNG, WebP ou GIF.' };
+      }
+      return null;
+    }
 
     if (!/^https?:\/\//i.test(value)) {
       return { coverImageUrl: 'URL invalide — doit commencer par https://' };

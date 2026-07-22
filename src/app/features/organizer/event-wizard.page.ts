@@ -53,7 +53,6 @@ interface DraftParticipant {
   email: string;
   phone?: string;
   ticketTypeTempId: string;
-  quantity: number;
 }
 
 const VISIBILITY_OPTIONS: SelectOption[] = [
@@ -61,6 +60,20 @@ const VISIBILITY_OPTIONS: SelectOption[] = [
   { value: 'PRIVATE', label: 'Privé' },
   { value: 'UNLISTED', label: 'Non listé (lien direct uniquement)' }
 ];
+
+const ACCEPTED_COVER_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const MAX_COVER_BYTES = 2 * 1024 * 1024;
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(reader.error ?? new Error('read failed'));
+    reader.readAsDataURL(file);
+  });
+}
+
+type CoverSource = 'url' | 'file';
 
 const TICKET_KIND_OPTIONS: SelectOption[] = [
   { value: 'STANDARD', label: 'Standard' },
@@ -211,13 +224,77 @@ function fromDatetimeLocalValue(value: string): string {
                 formControlName="categoryId"
                 [error]="invalid(infoForm.controls.categoryId) ? 'Catégorie requise.' : undefined"
               />
-              <app-ui-input
-                label="Image de couverture (URL)"
-                placeholder="https://images.unsplash.com/photo-..."
-                hint="Collez le lien direct de l'image (.jpg, .png). Les pages de galerie (Vecteezy, Pinterest…) ne fonctionnent pas."
-                formControlName="coverImageUrl"
-                [error]="coverImageError()"
-              />
+              <div class="flex flex-col gap-2">
+                <span class="text-sm font-medium text-text-primary">Image de couverture</span>
+                <div class="event-cover-source-toggle" role="group" aria-label="Source de l'image">
+                  <button
+                    type="button"
+                    class="event-cover-source-btn"
+                    [class.is-active]="coverSource() === 'url'"
+                    (click)="setCoverSource('url')"
+                  >
+                    URL
+                  </button>
+                  <button
+                    type="button"
+                    class="event-cover-source-btn"
+                    [class.is-active]="coverSource() === 'file'"
+                    (click)="setCoverSource('file')"
+                  >
+                    Fichier local
+                  </button>
+                </div>
+
+                @if (coverSource() === 'url') {
+                  <app-ui-input
+                    placeholder="https://images.unsplash.com/photo-..."
+                    hint="Collez le lien direct de l'image (.jpg, .png). Les pages de galerie (Vecteezy, Pinterest…) ne fonctionnent pas."
+                    formControlName="coverImageUrl"
+                    [error]="coverImageError()"
+                  />
+                } @else {
+                  <div class="event-cover-upload">
+                    <input
+                      #coverFileInput
+                      type="file"
+                      class="sr-only"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      (change)="onCoverFileSelected($event)"
+                    />
+                    @if (resolvedCoverUrl(infoForm.controls.coverImageUrl.value); as previewUrl) {
+                      <div class="event-cover-upload-preview">
+                        <img [src]="previewUrl" alt="Aperçu de la couverture" />
+                        <div class="event-cover-upload-actions">
+                          <app-ui-button type="button" size="sm" variant="secondary" (clicked)="coverFileInput.click()">
+                            Changer
+                          </app-ui-button>
+                          <app-ui-button type="button" size="sm" variant="secondary" (clicked)="clearCoverImage()">
+                            Retirer
+                          </app-ui-button>
+                        </div>
+                        @if (coverFileName()) {
+                          <p class="event-cover-upload-name">{{ coverFileName() }}</p>
+                        }
+                      </div>
+                    } @else {
+                      <button
+                        type="button"
+                        class="event-cover-upload-drop"
+                        [disabled]="coverUploading()"
+                        (click)="coverFileInput.click()"
+                      >
+                        <span class="event-cover-upload-drop-title">
+                          {{ coverUploading() ? 'Chargement…' : 'Choisir une image' }}
+                        </span>
+                        <span class="event-cover-upload-drop-hint">JPG, PNG, WebP ou GIF — 2 Mo max</span>
+                      </button>
+                    }
+                    @if (coverImageError(); as err) {
+                      <span class="text-xs text-red-500">{{ err }}</span>
+                    }
+                  </div>
+                }
+              </div>
             </form>
           }
 
@@ -311,8 +388,7 @@ function fromDatetimeLocalValue(value: string): string {
                   [hint]="ticketKind() === 'GRATUIT' ? 'Automatiquement fixé à 0.' : undefined"
                 />
                 <app-ui-input label="Quantité disponible" type="number" formControlName="quantityTotal" />
-                <app-ui-input label="Max par commande" type="number" hint="Optionnel" formControlName="maxPerOrder" />
-                <app-ui-input label="Description" hint="Optionnel" formControlName="description" />
+                <app-ui-input label="Description" hint="Optionnel" formControlName="description" class="sm:col-span-2" />
                 <div class="sm:col-span-2">
                   <app-ui-button type="button" variant="secondary" (clicked)="addTicketType()">
                     <lucide-angular [img]="icons.Plus" [size]="15"></lucide-angular>
@@ -339,9 +415,6 @@ function fromDatetimeLocalValue(value: string): string {
                         </div>
                         <div class="mt-1 text-xs text-text-secondary">
                           {{ tt.price === 0 ? 'Gratuit' : tt.price + ' MAD' }} · {{ tt.quantityTotal }} places
-                          @if (tt.maxPerOrder) {
-                            · max {{ tt.maxPerOrder }}/commande
-                          }
                         </div>
                       </div>
                       @if (!tt.persisted) {
@@ -385,7 +458,6 @@ function fromDatetimeLocalValue(value: string): string {
                 <app-ui-input label="Email" type="email" formControlName="email" />
                 <app-ui-input label="Téléphone" hint="Optionnel" formControlName="phone" />
                 <app-ui-select label="Type de billet" [options]="participantTicketOptions()" formControlName="ticketTypeTempId" />
-                <app-ui-input label="Quantité" type="number" formControlName="quantity" />
                 <div class="sm:col-span-2">
                   <app-ui-button type="button" variant="secondary" (clicked)="addParticipant()">
                     <lucide-angular [img]="icons.Plus" [size]="15"></lucide-angular>
@@ -431,7 +503,7 @@ function fromDatetimeLocalValue(value: string): string {
                           @if (guest.phone) {
                             · {{ guest.phone }}
                           }
-                          · {{ ticketDraftLabel(guest.ticketTypeTempId) }} × {{ guest.quantity }}
+                          · {{ ticketDraftLabel(guest.ticketTypeTempId) }}
                         </p>
                       </div>
                       <button
@@ -572,6 +644,9 @@ export class EventWizardPage {
   protected readonly participantsDraft = signal<DraftParticipant[]>([]);
   protected readonly importSummary = signal('');
   protected readonly ticketKind = signal<TicketTypeKind>('STANDARD');
+  protected readonly coverSource = signal<CoverSource>('url');
+  protected readonly coverFileName = signal('');
+  protected readonly coverUploading = signal(false);
   private readonly formVersion = signal(0);
 
   protected readonly isEditMode = computed(() => !!this.id());
@@ -602,7 +677,6 @@ export class EventWizardPage {
     kind: ['STANDARD', [Validators.required]],
     price: [0, [Validators.required, Validators.min(0)]],
     quantityTotal: [50, [Validators.required, Validators.min(1)]],
-    maxPerOrder: [5],
     description: ['']
   });
 
@@ -611,8 +685,7 @@ export class EventWizardPage {
     lastName: ['', [Validators.required, Validators.minLength(2)]],
     email: ['', [Validators.required, Validators.email]],
     phone: [''],
-    ticketTypeTempId: ['', [Validators.required]],
-    quantity: [1, [Validators.required, Validators.min(1)]]
+    ticketTypeTempId: ['', [Validators.required]]
   });
 
   protected readonly participantTicketOptions = computed<SelectOption[]>(() =>
@@ -749,7 +822,53 @@ export class EventWizardPage {
     return typeof message === 'string' ? message : undefined;
   }
 
-  private resolvedCoverUrl(url: string): string | undefined {
+  protected setCoverSource(source: CoverSource): void {
+    if (this.coverSource() === source) return;
+    this.coverSource.set(source);
+    // Switching mode clears the previous value to avoid mixing URL and file.
+    this.infoForm.controls.coverImageUrl.setValue('');
+    this.infoForm.controls.coverImageUrl.markAsUntouched();
+    this.coverFileName.set('');
+    this.formVersion.update((v) => v + 1);
+  }
+
+  protected async onCoverFileSelected(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+
+    if (!ACCEPTED_COVER_TYPES.includes(file.type)) {
+      this.toast.error('Format non supporté. Utilisez JPG, PNG, WebP ou GIF.');
+      return;
+    }
+    if (file.size > MAX_COVER_BYTES) {
+      this.toast.error('L’image doit faire 2 Mo maximum.');
+      return;
+    }
+
+    this.coverUploading.set(true);
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      this.coverSource.set('file');
+      this.coverFileName.set(file.name);
+      this.infoForm.controls.coverImageUrl.setValue(dataUrl);
+      this.infoForm.controls.coverImageUrl.markAsTouched();
+      this.formVersion.update((v) => v + 1);
+    } catch {
+      this.toast.error('Impossible de lire cette image.');
+    } finally {
+      this.coverUploading.set(false);
+    }
+  }
+
+  protected clearCoverImage(): void {
+    this.infoForm.controls.coverImageUrl.setValue('');
+    this.coverFileName.set('');
+    this.formVersion.update((v) => v + 1);
+  }
+
+  protected resolvedCoverUrl(url: string): string | undefined {
     return isDirectImageUrl(url) ? url.trim() : undefined;
   }
 
@@ -787,13 +906,13 @@ export class EventWizardPage {
         kind: value.kind as TicketTypeKind,
         price: value.kind === 'GRATUIT' ? 0 : value.price,
         quantityTotal: value.quantityTotal,
-        maxPerOrder: value.maxPerOrder || undefined,
+        maxPerOrder: 1,
         description: value.description || undefined
       }
     ]);
     this.formVersion.update((v) => v + 1);
 
-    this.ticketForm.reset({ name: '', kind: 'STANDARD', price: 0, quantityTotal: 50, maxPerOrder: 5, description: '' });
+    this.ticketForm.reset({ name: '', kind: 'STANDARD', price: 0, quantityTotal: 50, description: '' });
   }
 
   protected removeTicketType(tempId: string): void {
@@ -815,6 +934,12 @@ export class EventWizardPage {
     }
 
     const value = this.participantForm.getRawValue();
+    const email = value.email.trim().toLowerCase();
+    if (this.participantsDraft().some((guest) => guest.email.toLowerCase() === email)) {
+      this.toast.error('Ce participant est déjà dans la liste.');
+      return;
+    }
+
     this.participantsDraft.update((list) => [
       ...list,
       {
@@ -823,8 +948,7 @@ export class EventWizardPage {
         lastName: value.lastName.trim(),
         email: value.email.trim(),
         phone: value.phone.trim() || undefined,
-        ticketTypeTempId: value.ticketTypeTempId,
-        quantity: Number(value.quantity) || 1
+        ticketTypeTempId: value.ticketTypeTempId
       }
     ]);
 
@@ -835,8 +959,7 @@ export class EventWizardPage {
       lastName: '',
       email: '',
       phone: '',
-      ticketTypeTempId: defaultTicket,
-      quantity: 1
+      ticketTypeTempId: defaultTicket
     });
   }
 
@@ -879,16 +1002,22 @@ export class EventWizardPage {
         name: t.name
       }));
 
+      const existingEmails = new Set(this.participantsDraft().map((guest) => guest.email.toLowerCase()));
       const guests = result.rows
         .filter((row) => !row.error)
+        .filter((row) => {
+          const email = row.email.toLowerCase();
+          if (existingEmails.has(email)) return false;
+          existingEmails.add(email);
+          return true;
+        })
         .map((row) => ({
           tempId: `guest-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${row.rowNumber}`,
           firstName: row.firstName,
           lastName: row.lastName,
           email: row.email,
           phone: row.phone,
-          ticketTypeTempId: matchTicketTypeId(row.ticketTypeName, ticketTypes, defaultTicket) ?? defaultTicket,
-          quantity: row.quantity
+          ticketTypeTempId: matchTicketTypeId(row.ticketTypeName, ticketTypes, defaultTicket) ?? defaultTicket
         }));
 
       this.participantsDraft.update((list) => [...list, ...guests]);
@@ -1043,7 +1172,7 @@ export class EventWizardPage {
           price: draft.price,
           currency: 'MAD',
           quantityTotal: draft.quantityTotal,
-          maxPerOrder: draft.maxPerOrder,
+          maxPerOrder: 1,
           description: draft.description
         };
         return this.ticketService.createTicketType(eventId, ticketPayload);
@@ -1077,7 +1206,8 @@ export class EventWizardPage {
         return this.registrationService.create({
           eventId,
           ticketTypeId,
-          quantity: guest.quantity,
+          quantity: 1,
+          source: 'MANUAL',
           participantFirstName: guest.firstName,
           participantLastName: guest.lastName,
           participantEmail: guest.email,
@@ -1132,6 +1262,9 @@ export class EventWizardPage {
           categoryId: event.categoryId,
           coverImageUrl: event.coverImageUrl
         });
+        const cover = (event.coverImageUrl ?? '').trim();
+        this.coverSource.set(/^data:image\//i.test(cover) ? 'file' : 'url');
+        this.coverFileName.set(/^data:image\//i.test(cover) ? 'Image téléversée' : '');
         this.dateVenueForm.patchValue({
           startAt: toDatetimeLocalValue(event.startAt),
           endAt: toDatetimeLocalValue(event.endAt),

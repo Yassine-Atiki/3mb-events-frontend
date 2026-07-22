@@ -4,6 +4,7 @@ import {
   Category,
   ChartPoint,
   Event,
+  EventAudit,
   EventStatus,
   OrganizerStats,
   PaymentIntent,
@@ -905,8 +906,8 @@ export const mockRegistrations: Registration[] = [
     eventId: EVT_IA.id,
     ticketTypeId: `${EVT_IA.id}-tt-1`,
     status: 'CONFIRMED',
-    quantity: 2,
-    totalPrice: EVT_IA.priceFrom * 2,
+    quantity: 1,
+    totalPrice: EVT_IA.priceFrom,
     currency: 'MAD',
     participantFirstName: 'Sara',
     participantLastName: 'El Amrani',
@@ -991,8 +992,8 @@ export const mockRegistrations: Registration[] = [
     eventId: EVT_SALON_AUTO.id,
     ticketTypeId: `${EVT_SALON_AUTO.id}-tt-1`,
     status: 'WAITLIST',
-    quantity: 3,
-    totalPrice: EVT_SALON_AUTO.priceFrom * 3,
+    quantity: 1,
+    totalPrice: EVT_SALON_AUTO.priceFrom,
     currency: 'MAD',
     participantFirstName: 'Sara',
     participantLastName: 'El Amrani',
@@ -1420,18 +1421,21 @@ export function computeOrganizerStats(organizerId: string): OrganizerStats {
   const events = mockEvents.filter((event) => event.organizerId === organizerId);
   const eventIds = new Set(events.map((event) => event.id));
   const registrations = activeRegistrationsFor(eventIds);
+  const soldRegistrations = registrations.filter(
+    (reg) =>
+      (reg.status === 'CONFIRMED' || reg.status === 'ATTENDED') &&
+      Number(reg.totalPrice ?? 0) > 0
+  );
 
   const totalRegistrations = registrations.reduce((sum, reg) => sum + reg.quantity, 0);
-  const totalRevenue = registrations.reduce((sum, reg) => sum + reg.totalPrice, 0);
-  const totalTicketsSold = mockTicketTypes
-    .filter((ticketType) => eventIds.has(ticketType.eventId))
-    .reduce((sum, ticketType) => sum + ticketType.quantitySold, 0);
+  const totalRevenue = soldRegistrations.reduce((sum, reg) => sum + reg.totalPrice, 0);
+  const totalTicketsSold = soldRegistrations.reduce((sum, reg) => sum + reg.quantity, 0);
 
   const registrationsOverTime = buildChartOverTime(
     registrations.map((reg) => ({ createdAt: reg.createdAt, value: reg.quantity }))
   );
   const revenueOverTime = buildChartOverTime(
-    registrations.map((reg) => ({ createdAt: reg.createdAt, value: reg.totalPrice }))
+    soldRegistrations.map((reg) => ({ createdAt: reg.createdAt, value: reg.totalPrice }))
   );
 
   const topEvents = events
@@ -1483,6 +1487,124 @@ export function computeEventStats(eventId: string): OrganizerStats {
           }
         ]
       : []
+  };
+}
+
+export function computeEventAudit(eventId: string): EventAudit {
+  const event = findEventById(eventId);
+  if (!event) {
+    throw new Error('Event not found');
+  }
+
+  const all = mockRegistrations.filter((reg) => reg.eventId === eventId);
+  const active = all.filter((reg) =>
+    reg.status === 'CONFIRMED' || reg.status === 'ATTENDED' || reg.status === 'PENDING'
+  );
+  const waitlist = all.filter((reg) => reg.status === 'WAITLIST');
+  const paid = all.filter((reg) => reg.status === 'CONFIRMED' || reg.status === 'ATTENDED');
+  const scannedIds = new Set(
+    mockTickets.filter((t) => t.eventId === eventId && t.status === 'USED').map((t) => t.registrationId)
+  );
+
+  const isAttended = (reg: Registration): boolean =>
+    !!reg.checkedInAt || reg.status === 'ATTENDED' || scannedIds.has(reg.id);
+
+  const registeredQuantity = active.reduce((sum, reg) => sum + reg.quantity, 0);
+  const occupancyRate =
+    event.capacity > 0 ? Math.round((registeredQuantity * 1000) / event.capacity) / 10 : 0;
+
+  const byTypeMap = new Map<string, { name: string; count: number; quantity: number }>();
+  for (const reg of active) {
+    const type = mockTicketTypes.find((t) => t.id === reg.ticketTypeId);
+    const key = reg.ticketTypeId;
+    const current = byTypeMap.get(key) ?? { name: type?.name ?? 'Sans type', count: 0, quantity: 0 };
+    current.count += 1;
+    current.quantity += reg.quantity;
+    byTypeMap.set(key, current);
+  }
+  const registrationsByTicketType = [...byTypeMap.entries()]
+    .map(([ticketTypeId, value]) => ({
+      ticketTypeId,
+      ticketTypeName: value.name,
+      count: value.count,
+      quantity: value.quantity
+    }))
+    .sort((a, b) => b.quantity - a.quantity);
+
+  const revenueCollected = paid.reduce((sum, reg) => sum + reg.totalPrice, 0);
+  const refunds = mockRefunds.filter((r) => r.eventId === eventId);
+  const pendingRefundsCount = refunds.filter((r) => r.status === 'REQUESTED').length;
+  const processed = refunds.filter((r) => r.status === 'PROCESSED' || r.status === 'APPROVED');
+  const refundsProcessedAmount = processed.reduce((sum, r) => sum + r.amount, 0);
+
+  const after = new Date(event.endAt).getTime() < Date.now();
+  const eligible = all.filter(
+    (reg) =>
+      reg.status === 'CONFIRMED' || reg.status === 'ATTENDED' || reg.status === 'WAITLIST'
+  );
+  const attended = eligible.filter(isAttended);
+  const noShow = eligible.filter((reg) => !isAttended(reg) && reg.status !== 'WAITLIST');
+  const denom = eligible.length || 1;
+  const noShowDenom = eligible.filter((reg) => reg.status !== 'WAITLIST').length || 1;
+
+  const attendeesByTypeMap = new Map<string, { name: string; count: number; quantity: number }>();
+  for (const reg of attended) {
+    const type = mockTicketTypes.find((t) => t.id === reg.ticketTypeId);
+    const key = reg.ticketTypeId;
+    const current = attendeesByTypeMap.get(key) ?? {
+      name: type?.name ?? 'Sans type',
+      count: 0,
+      quantity: 0
+    };
+    current.count += 1;
+    current.quantity += reg.quantity;
+    attendeesByTypeMap.set(key, current);
+  }
+
+  const dayCounts = new Map<string, number>();
+  for (const reg of active) {
+    const day = reg.createdAt.slice(0, 10);
+    dayCounts.set(day, (dayCounts.get(day) ?? 0) + 1);
+  }
+  const days = [...dayCounts.keys()].sort();
+  let cumulative = 0;
+  const registrationTrend: ChartPoint[] = days.map((day) => {
+    cumulative += dayCounts.get(day) ?? 0;
+    return { label: day.slice(5), value: cumulative };
+  });
+
+  return {
+    eventId: event.id,
+    title: event.title,
+    phase: after ? 'AFTER' : 'BEFORE',
+    startAt: event.startAt,
+    endAt: event.endAt,
+    capacity: event.capacity,
+    registeredCount: active.length,
+    registeredQuantity,
+    occupancyRate,
+    registrationsByTicketType,
+    registrationTrend,
+    revenueCollected,
+    waitlistCount: waitlist.length,
+    pendingRefundsCount,
+    attendedCount: attended.length,
+    attendanceRate: Math.round((attended.length * 1000) / denom) / 10,
+    noShowCount: noShow.length,
+    noShowRate: Math.round((noShow.length * 1000) / noShowDenom) / 10,
+    attendeesByTicketType: after
+      ? [...attendeesByTypeMap.entries()]
+          .map(([ticketTypeId, value]) => ({
+            ticketTypeId,
+            ticketTypeName: value.name,
+            count: value.count,
+            quantity: value.quantity
+          }))
+          .sort((a, b) => b.quantity - a.quantity)
+      : [],
+    finalRevenue: Math.max(0, revenueCollected - refundsProcessedAmount),
+    refundsProcessedAmount,
+    refundsProcessedCount: processed.length
   };
 }
 

@@ -181,100 +181,94 @@ function readFileAsDataUrl(file: File): Promise<string> {
               Mettre à jour le mot de passe
             </app-ui-button>
           </form>
-        </section>
-      </div>
 
-      <div class="participant-profile-2fa-row">
-        <section class="participant-pass-panel participant-profile-security participant-profile-2fa">
-          <p class="participant-pass-panel-eyebrow">
-            <lucide-angular [img]="icons.Shield" [size]="12" class="mr-1 inline"></lucide-angular>
-            Authentification à deux facteurs
-          </p>
-          <h2 class="participant-pass-panel-title">Application TOTP</h2>
-          <p class="mt-2 text-sm text-text-secondary">
-            Compatible avec Google Authenticator, Authy, Microsoft Authenticator et toute app TOTP.
-          </p>
+          <div class="mt-10 pt-8 border-t border-gray-200 dark:border-gray-800">
+            <h2 class="participant-pass-panel-title mb-2">Authentification à deux facteurs</h2>
+            <p class="text-sm text-text-secondary">
+              Application TOTP (Google Authenticator, Authy, etc).
+            </p>
 
-          @if (user()?.totpEnabled) {
-            <div class="mt-4 mb-3 flex flex-wrap items-center gap-2">
-              <app-ui-badge tone="teal">Activée</app-ui-badge>
-            </div>
-            <form [formGroup]="disable2faForm" (ngSubmit)="disable2fa()" class="flex flex-col gap-3">
-              <app-ui-input
-                label="Code pour désactiver"
-                placeholder="123456 ou code de récupération"
-                formControlName="code"
-                [error]="
-                  disable2faForm.controls.code.invalid && disable2faForm.controls.code.touched
-                    ? 'Requis'
-                    : undefined
-                "
-              />
-              <app-ui-button type="submit" variant="secondary" [loading]="disabling2fa()" class="self-start">
-                Désactiver la 2FA
-              </app-ui-button>
-            </form>
-          } @else if (recoveryCodes()?.length) {
-            <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50/80 p-4">
-              <p class="text-sm font-semibold text-amber-900">Codes de récupération</p>
-              <p class="mt-1 text-xs text-amber-800">
-                Conservez-les en lieu sûr. Chaque code ne fonctionne qu’une fois. Ils ne seront plus réaffichés.
-              </p>
-              <ul class="mt-3 grid gap-1 font-mono text-sm text-amber-950 sm:grid-cols-2">
-                @for (code of recoveryCodes(); track code) {
-                  <li>{{ code }}</li>
-                }
-              </ul>
-              <div class="mt-4 flex flex-wrap gap-2">
-                <app-ui-button type="button" variant="secondary" (clicked)="copyRecoveryCodes()">
-                  Copier
-                </app-ui-button>
-                <app-ui-button type="button" (clicked)="dismissRecoveryCodes()">
-                  J’ai sauvegardé mes codes
-                </app-ui-button>
+            @if (user()?.totpEnabled) {
+              <div class="mt-4 mb-3 flex flex-wrap items-center gap-2">
+                <app-ui-badge tone="teal">Activée</app-ui-badge>
               </div>
-            </div>
-          } @else if (setup()) {
-            <div class="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
-              <img
-                [src]="setup()!.qrCodeDataUrl"
-                alt="QR code 2FA"
-                class="mx-auto h-40 w-40 shrink-0 rounded-xl border border-gray-200 bg-white p-2 sm:mx-0"
-              />
-              <div class="flex min-w-0 flex-1 flex-col gap-3">
-                <p class="text-sm text-text-secondary">
-                  Scannez le QR code, ou saisissez ce secret manuellement&nbsp;:
+              <form [formGroup]="disable2faForm" (ngSubmit)="disable2fa()" class="flex flex-col gap-3">
+                <app-ui-input
+                  label="Code pour désactiver"
+                  placeholder="123456 ou code de récupération"
+                  formControlName="code"
+                  [error]="
+                    disable2faForm.controls.code.invalid && disable2faForm.controls.code.touched
+                      ? 'Requis'
+                      : undefined
+                  "
+                />
+                <app-ui-button type="submit" variant="secondary" [loading]="disabling2fa()" class="self-start">
+                  Désactiver la 2FA
+                </app-ui-button>
+              </form>
+            } @else if (recoveryCodes()?.length) {
+              <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50/80 p-4">
+                <p class="text-sm font-semibold text-amber-900">Codes de récupération</p>
+                <p class="mt-1 text-xs text-amber-800">
+                  Conservez-les en lieu sûr. Chaque code ne fonctionne qu’une fois. Ils ne seront plus réaffichés.
                 </p>
-                <code class="break-all rounded-lg bg-gray-50 px-3 py-2 text-xs text-text-primary">{{
-                  setup()!.secret
-                }}</code>
-                <form [formGroup]="enable2faForm" (ngSubmit)="confirmEnable2fa()" class="flex flex-col gap-3">
-                  <app-ui-input
-                    label="Code de confirmation"
-                    placeholder="123456"
-                    formControlName="code"
-                    [error]="
-                      enable2faForm.controls.code.invalid && enable2faForm.controls.code.touched
-                        ? '6 chiffres requis'
-                        : undefined
-                    "
-                  />
-                  <div class="flex flex-wrap gap-2">
-                    <app-ui-button type="submit" [loading]="enabling2fa()">Activer</app-ui-button>
-                    <app-ui-button type="button" variant="secondary" (clicked)="cancelSetup()">
-                      Annuler
-                    </app-ui-button>
-                  </div>
-                </form>
+                <ul class="mt-3 grid gap-1 font-mono text-sm text-amber-950 sm:grid-cols-2">
+                  @for (code of recoveryCodes(); track code) {
+                    <li>{{ code }}</li>
+                  }
+                </ul>
+                <div class="mt-4 flex flex-wrap gap-2">
+                  <app-ui-button type="button" variant="secondary" (clicked)="copyRecoveryCodes()">
+                    Copier
+                  </app-ui-button>
+                  <app-ui-button type="button" (clicked)="dismissRecoveryCodes()">
+                    J’ai sauvegardé mes codes
+                  </app-ui-button>
+                </div>
               </div>
-            </div>
-          } @else {
-            <div class="mt-4">
-              <app-ui-button type="button" [loading]="starting2fa()" (clicked)="start2faSetup()">
-                Activer la 2FA
-              </app-ui-button>
-            </div>
-          }
+            } @else if (setup()) {
+              <div class="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
+                <img
+                  [src]="setup()!.qrCodeDataUrl"
+                  alt="QR code 2FA"
+                  class="mx-auto h-40 w-40 shrink-0 rounded-xl border border-gray-200 bg-white p-2 sm:mx-0"
+                />
+                <div class="flex min-w-0 flex-1 flex-col gap-3">
+                  <p class="text-sm text-text-secondary">
+                    Scannez le QR code, ou saisissez ce secret manuellement&nbsp;:
+                  </p>
+                  <code class="break-all rounded-lg bg-gray-50 px-3 py-2 text-xs text-text-primary">{{
+                    setup()!.secret
+                  }}</code>
+                  <form [formGroup]="enable2faForm" (ngSubmit)="confirmEnable2fa()" class="flex flex-col gap-3">
+                    <app-ui-input
+                      label="Code de confirmation"
+                      placeholder="123456"
+                      formControlName="code"
+                      [error]="
+                        enable2faForm.controls.code.invalid && enable2faForm.controls.code.touched
+                          ? '6 chiffres requis'
+                          : undefined
+                      "
+                    />
+                    <div class="flex flex-wrap gap-2">
+                      <app-ui-button type="submit" [loading]="enabling2fa()">Activer</app-ui-button>
+                      <app-ui-button type="button" variant="secondary" (clicked)="cancelSetup()">
+                        Annuler
+                      </app-ui-button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            } @else {
+              <div class="mt-4">
+                <app-ui-button type="button" [loading]="starting2fa()" (clicked)="start2faSetup()">
+                  Activer la 2FA
+                </app-ui-button>
+              </div>
+            }
+          </div>
         </section>
       </div>
     </div>

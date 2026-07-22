@@ -146,7 +146,6 @@ const KIND_LABELS: Record<TicketTypeKind, string> = {
           <app-ui-input label="Nom" formControlName="name" [error]="invalid('name') ? 'Requis' : undefined" />
           <app-ui-input label="Prix (MAD)" type="number" formControlName="price" />
           <app-ui-input label="Quantité totale" type="number" formControlName="quantityTotal" />
-          <app-ui-input label="Max / commande" type="number" formControlName="maxPerOrder" />
           <app-ui-input label="Description" formControlName="description" class="sm:col-span-2" />
           <div class="ui-modal-footer sm:col-span-2">
             <app-ui-button type="submit" [loading]="saving()">Enregistrer</app-ui-button>
@@ -181,7 +180,6 @@ export class EventTicketsPage {
     kind: ['STANDARD', [Validators.required]],
     price: [0, [Validators.required, Validators.min(0)]],
     quantityTotal: [50, [Validators.required, Validators.min(1)]],
-    maxPerOrder: [5],
     description: ['']
   });
 
@@ -209,7 +207,7 @@ export class EventTicketsPage {
   protected startCreate(): void {
     this.editingId.set(null);
     this.creating.set(true);
-    this.form.reset({ name: '', kind: 'STANDARD', price: 0, quantityTotal: 50, maxPerOrder: 5, description: '' });
+    this.form.reset({ name: '', kind: 'STANDARD', price: 0, quantityTotal: 50, description: '' });
   }
 
   protected openEdit(ticket: TicketType): void {
@@ -220,7 +218,6 @@ export class EventTicketsPage {
       kind: ticket.kind,
       price: ticket.price,
       quantityTotal: ticket.quantityTotal,
-      maxPerOrder: ticket.maxPerOrder ?? 5,
       description: ticket.description ?? ''
     });
   }
@@ -266,7 +263,7 @@ export class EventTicketsPage {
         kind: value.kind as TicketTypeKind,
         price: value.price,
         quantityTotal: value.quantityTotal,
-        maxPerOrder: value.maxPerOrder || undefined,
+        maxPerOrder: 1,
         description: value.description || undefined
       };
       this.ticketService.updateTicketType(editingId, payload).subscribe({
@@ -289,7 +286,7 @@ export class EventTicketsPage {
         price: value.price,
         currency: 'MAD',
         quantityTotal: value.quantityTotal,
-        maxPerOrder: value.maxPerOrder || undefined,
+        maxPerOrder: 1,
         description: value.description || undefined
       };
       this.ticketService.createTicketType(eventId, payload).subscribe({

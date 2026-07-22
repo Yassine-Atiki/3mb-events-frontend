@@ -124,7 +124,7 @@ import { buildUrgencyList } from '../../shared/organizer/urgency.util';
               <div class="min-w-0">
                 <p class="organizer-studio-metric-label">Billets vendus</p>
                 <p class="organizer-studio-metric-value">{{ s.totalTicketsSold }}</p>
-                <p class="organizer-studio-metric-chip">toutes sessions</p>
+                <p class="organizer-studio-metric-chip">inscriptions payées</p>
               </div>
             </article>
 

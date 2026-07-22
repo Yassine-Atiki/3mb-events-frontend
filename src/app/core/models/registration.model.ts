@@ -6,11 +6,15 @@ export type RegistrationStatus =
   | 'ATTENDED'
   | 'REFUNDED';
 
+/** PUBLIC = sold via link; MANUAL/IMPORT = organizer-added (not a sale). */
+export type RegistrationSource = 'PUBLIC' | 'MANUAL' | 'IMPORT';
+
 export interface Registration {
   id: string;
   eventId: string;
   ticketTypeId: string;
   status: RegistrationStatus;
+  source?: RegistrationSource;
   quantity: number;
   totalPrice: number;
   currency: string;

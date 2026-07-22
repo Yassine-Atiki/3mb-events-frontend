@@ -177,7 +177,6 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                 <tr>
                   <th>Participant</th>
                   <th>Billet</th>
-                  <th>Qté</th>
                   <th>Total</th>
                   <th>Statut</th>
                   <th>Date</th>
@@ -202,8 +201,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                       </span>
                     </td>
                     <td class="text-text-secondary">{{ ticketTypeName(row.ticketTypeId) }}</td>
-                    <td class="font-mono text-xs tabular-nums">{{ row.quantity }}</td>
-                    <td class="font-mono text-xs tabular-nums">{{ row.totalPrice }} {{ row.currency }}</td>
+                    <td class="text-sm tabular-nums text-text-secondary">{{ formatTotal(row) }}</td>
                     <td>
                       <app-status-dot
                         [label]="statusFor(row.status).label"
@@ -288,13 +286,6 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
             (ngModelChange)="updateAddForm('ticketTypeId', $event)"
             name="ticketTypeId"
           />
-          <app-ui-input
-            label="Quantité"
-            type="number"
-            [ngModel]="addForm.quantity"
-            (ngModelChange)="updateAddForm('quantity', $event)"
-            name="quantity"
-          />
           <div class="ui-modal-footer">
             <app-ui-button type="submit" [loading]="addSubmitting()">Inscrire</app-ui-button>
             <app-ui-button variant="secondary" type="button" (clicked)="closeAddDrawer()">
@@ -312,7 +303,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
         <div class="space-y-4 text-sm">
           <p class="text-text-secondary">
             Colonnes attendues : <strong>Prénom</strong>, <strong>Nom</strong>, <strong>Email</strong>.
-            Optionnel : Téléphone, Quantité, Billet (nom du type).
+            Optionnel : Téléphone, Billet (nom du type). Une ligne = un participant.
           </p>
 
           @if (importFileName()) {
@@ -430,15 +421,9 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                 </div>
               }
             </div>
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <dt class="text-xs font-semibold uppercase tracking-wide text-text-secondary">Quantité</dt>
-                <dd class="mt-1 font-mono tabular-nums">{{ reg.quantity }}</dd>
-              </div>
-              <div>
-                <dt class="text-xs font-semibold uppercase tracking-wide text-text-secondary">Total</dt>
-                <dd class="mt-1 font-mono tabular-nums">{{ reg.totalPrice }} {{ reg.currency }}</dd>
-              </div>
+            <div>
+              <dt class="text-xs font-semibold uppercase tracking-wide text-text-secondary">Total</dt>
+              <dd class="mt-1 text-sm tabular-nums text-text-secondary">{{ formatTotal(reg) }}</dd>
             </div>
             <div>
               <dt class="text-xs font-semibold uppercase tracking-wide text-text-secondary">Statut</dt>
@@ -526,8 +511,7 @@ export class EventRegistrationsPage {
     lastName: '',
     email: '',
     phone: '',
-    ticketTypeId: '',
-    quantity: 1
+    ticketTypeId: ''
   };
 
   protected readonly filteredRegistrations = computed(() => {
@@ -589,6 +573,17 @@ export class EventRegistrationsPage {
     return this.ticketTypeNames()[ticketTypeId] ?? '—';
   }
 
+  /** Manual/import invites are not paid sales — show a dash instead of a ticket price. */
+  protected formatTotal(registration: Registration): string {
+    if (registration.source === 'MANUAL' || registration.source === 'IMPORT') {
+      return '—';
+    }
+    if (registration.totalPrice == null || Number(registration.totalPrice) <= 0) {
+      return '—';
+    }
+    return `${registration.totalPrice} ${registration.currency}`;
+  }
+
   protected formatDate(iso: string): string {
     return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }).format(
       new Date(iso)
@@ -617,13 +612,8 @@ export class EventRegistrationsPage {
     this.resetAddForm();
   }
 
-  protected updateAddForm(field: keyof typeof this.addForm, value: string | number): void {
-    if (field === 'quantity') {
-      const qty = Number(value);
-      this.addForm.quantity = Number.isFinite(qty) && qty > 0 ? qty : 1;
-      return;
-    }
-    this.addForm[field] = String(value);
+  protected updateAddForm(field: keyof typeof this.addForm, value: string): void {
+    this.addForm[field] = value;
   }
 
   protected exportCsv(): void {
@@ -753,7 +743,8 @@ export class EventRegistrationsPage {
             .create({
               eventId,
               ticketTypeId,
-              quantity: row.quantity,
+              quantity: 1,
+              source: 'IMPORT',
               participantFirstName: row.firstName,
               participantLastName: row.lastName,
               participantEmail: row.email,
@@ -845,7 +836,8 @@ export class EventRegistrationsPage {
       .create({
         eventId,
         ticketTypeId,
-        quantity: this.addForm.quantity,
+        quantity: 1,
+        source: 'MANUAL',
         participantFirstName: firstName,
         participantLastName: lastName,
         participantEmail: email,
@@ -858,8 +850,12 @@ export class EventRegistrationsPage {
           this.closeAddDrawer();
           this.toast.success('Participant inscrit avec succès.');
         },
-        error: () => {
+        error: (err: { error?: { code?: string; message?: string } }) => {
           this.addSubmitting.set(false);
+          if (err?.error?.code === 'ALREADY_REGISTERED') {
+            this.toast.error(err.error.message || 'Ce participant est déjà inscrit.');
+            return;
+          }
           this.toast.error("Impossible d'inscrire ce participant.");
         }
       });
@@ -961,8 +957,7 @@ export class EventRegistrationsPage {
       lastName: '',
       email: '',
       phone: '',
-      ticketTypeId: this.ticketTypes()[0]?.id ?? '',
-      quantity: 1
+      ticketTypeId: this.ticketTypes()[0]?.id ?? ''
     };
   }
 }

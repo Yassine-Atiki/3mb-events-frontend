@@ -3,7 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
-import { AdminStats, OrganizerStats } from '../models';
+import { AdminStats, EventAudit, OrganizerStats } from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class StatsService {
@@ -20,5 +20,9 @@ export class StatsService {
 
   getEventStats(eventId: string): Observable<OrganizerStats> {
     return this.http.get<OrganizerStats>(`${this.baseUrl}/events/${eventId}`);
+  }
+
+  getEventAudit(eventId: string): Observable<EventAudit> {
+    return this.http.get<EventAudit>(`${this.baseUrl}/events/${eventId}/audit`);
   }
 }
