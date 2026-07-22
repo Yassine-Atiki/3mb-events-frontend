@@ -49,6 +49,12 @@ Thumbs.db
 .env.*.local
 !.env.example
 
+# Scratch / temp dumps (never commit)
+/_me.json
+/_me2.json
+/_tok.json
+/_*.json
+
 # AI Tools
 .claude/
 .cursor/
